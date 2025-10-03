@@ -1,7 +1,6 @@
 "use client";
 
 import { useLayoutEffect, useRef } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
 import { gsap } from "gsap";
@@ -21,8 +20,14 @@ export default function Home() {
       if (cardsRef.current) {
         tl.from(
           Array.from(cardsRef.current.querySelectorAll("[data-card]")),
-          { y: 24, autoAlpha: 0, rotate: 1, duration: 0.5, stagger: 0.08, immediateRender: false },
-          "-=0.2"
+          {
+            y: 24,
+            autoAlpha: 0,
+            rotate: 1,
+            duration: 0.6,
+            stagger: 0.2,          // appear one by one
+            immediateRender: false,
+          }
         );
       }
     });
