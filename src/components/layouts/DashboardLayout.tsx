@@ -266,10 +266,10 @@ export default function DashboardLayout({
                     "text-[#c084fc]"
                   )}
                 >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 001.997 1.25c1.79-.32 2.947 1.92 1.64 3.227a1.724 1.724 0 000 2.432c1.307 1.306.15 3.546-1.64 3.226a1.724 1.724 0 00-1.997 1.25c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-1.997-1.25c-1.79.32-2.947-1.92-1.64-3.226a1.724 1.724 0 000-2.432c-1.307-1.307-.15-3.547 1.64-3.227.98.176 1.862-.46 1.997-1.25z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                    <circle cx="12" cy="12" r="2.25" fill="currentColor"/>
-                  </svg>
+                  <svg className="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+  <path stroke="currentColor"  stroke-linejoin="round" stroke-width="2" d="M10 19H5a1 1 0 0 1-1-1v-1a3 3 0 0 1 3-3h2m10 1a3 3 0 0 1-3 3m3-3a3 3 0 0 0-3-3m3 3h1m-4 3a3 3 0 0 1-3-3m3 3v1m-3-4a3 3 0 0 1 3-3m-3 3h-1m4-3v-1m-2.121 1.879-.707-.707m5.656 5.656-.707-.707m-4.242 0-.707.707m5.656-5.656-.707.707M12 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+</svg>
+
                 </span>
                 {isSidebarOpen && <span className="ml-2 font-medium">Settings</span>}
               </button>

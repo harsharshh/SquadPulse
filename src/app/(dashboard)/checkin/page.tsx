@@ -259,6 +259,8 @@ export default function CheckInPage() {
   const [comment, setComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  // Organization (shown as chip in team header)
+  const [orgName] = useState<string>("Gainsight");
 
   // Team state (stateful, allows adding new teams)
   const [teamName, setTeamName] = useState("Jo Core");
@@ -339,6 +341,15 @@ export default function CheckInPage() {
       );
     }
   }, [teamStats.avg]);
+
+  const teamFaceMood = useMemo(() => {
+    const n = Math.round(teamStats.avg);
+    return Math.min(5, Math.max(1, n)) as 1|2|3|4|5;
+  }, [teamStats.avg]);
+
+  const teamFaceColor = useMemo(() => {
+    return moodOptions.find((m) => m.value === teamFaceMood)?.colorHex ?? "#9ca3af";
+  }, [teamFaceMood]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -554,23 +565,54 @@ export default function CheckInPage() {
             {/* RIGHT COLUMN */}
             <div ref={rightColRef} className="flex flex-col space-y-6 h-[calc(100vh-4rem)]" data-card-container>
               {/* Team header */}
-              <div data-card className="rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/90 to-white/70 dark:from-[#1a1a2e]/80 dark:to-[#232136]/60 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/40 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">{teamName}</h3>
-                  <p className="text-sm text-foreground/60">Team configuration</p>
+              <div
+                data-card
+                className="rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/90 to-white/70 dark:from-[#1a1a2e]/80 dark:to-[#232136]/60 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/40 flex items-center justify-between"
+              >
+                {/* Left: Team avatar + name */}
+                <div className="flex items-center gap-3">
+                  {/* Avatar derived from team initials */}
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#f97316] via-[#fb7185] to-[#c084fc] text-white shadow-md">
+                    <span className="text-base font-bold leading-none">
+                      {teamName
+                        .split(" ")
+                        .map((w) => w[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-extrabold leading-tight">
+                      <span className="bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] bg-clip-text text-transparent">
+                        {teamName}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-foreground/60">Team configuration</p>
+                  </div>
                 </div>
-                <div className="w-48">
-                  <SelectDropdown
-                    value={teamName}
-                    options={teams}
-                    onChange={(v) => { setTeamName(v); try { localStorage.setItem('squadpulse.team', v); } catch {} }}
-                  />
+
+                {/* Right: Org chip */}
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-foreground/15 px-2.5 py-1 text-xs text-foreground/80 bg-background/60 dark:bg-foreground/10">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                      <path d="M12 3l9 5-9 5-9-5 9-5z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M3 12l9 5 9-5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    {orgName}
+                  </span>
                 </div>
               </div>
 
               {/* Team overview */}
               <div ref={cardsRef} data-card className="z-[-1] rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/90 to-white/70 dark:from-[#1a1a2e]/80 dark:to-[#232136]/60 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/40">
-                <h3 className="mb-3 text-lg font-semibold text-foreground">Team mood overview</h3>
+                <div className="mb-3 flex items-center gap-3">
+                  <MoodFace mood={teamFaceMood} activeColor={teamFaceColor} size={48} />
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">Team mood overview</h3>
+                    {/* <div className="text-sm text-foreground/70">Average: {teamStats.avg} / 5</div> */}
+                  </div>
+                </div>
 
                 {/* Progress bar */}
                 <div className="mb-3 h-3 w-full overflow-hidden rounded-full bg-foreground/10">
@@ -585,7 +627,10 @@ export default function CheckInPage() {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="rounded-xl border border-foreground/10 bg-gradient-to-tr from-white/80 to-white/60 dark:from-[#2d2250]/40 dark:to-[#1a1a2e]/30 shadow-sm p-3 text-center">
                     <div className="text-xs text-foreground/60">Average</div>
-                    <div className="text-xl font-semibold text-foreground">{teamStats.avg}</div>
+                      <div className="text-2xl font-extrabold tracking-tight" style={{ color: teamFaceColor }}>
+                            {teamStats.avg}
+                            <span className="ml-1 align-top text-[10px] font-semibold text-foreground/60">/ 5</span>
+                        </div>
                   </div>
                   <div className="rounded-xl border border-foreground/10 bg-gradient-to-tr from-white/80 to-white/60 dark:from-[#2d2250]/40 dark:to-[#1a1a1a]/30 shadow-sm p-3 text-center">
                     <div className="text-xs text-foreground/60">Check‑ins</div>
