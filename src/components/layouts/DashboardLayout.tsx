@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
@@ -118,6 +118,27 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { data: session } = useSession();
 
+  const [showSettings, setShowSettings] = useState(false);
+  const [teamValue, setTeamValue] = useState("");
+  const [teams, setTeams] = useState<string[]>(["Core Squad", "Web Guild", "Ops Crew"]);
+
+  useEffect(() => {
+    try {
+      const stored = typeof window !== "undefined" ? localStorage.getItem("squadpulse.team") : null;
+      if (stored) {
+        setTeamValue(stored);
+        setTeams((prev) => (prev.includes(stored) ? prev : [...prev, stored]));
+      }
+    } catch {}
+  }, []);
+
+  const saveTeam = () => {
+    try {
+      if (teamValue.trim()) localStorage.setItem("squadpulse.team", teamValue.trim());
+    } catch {}
+    setShowSettings(false);
+  };
+
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
@@ -205,6 +226,7 @@ export default function DashboardLayout({
           <div className="flex justify-center p-4  w-full">
             <ThemeToggle variant={isSidebarOpen ? 'full' : 'icon'} />
           </div>
+
           <div className="border-t border-gray-300 dark:border-gray-700 p-4 w-full flex flex-col items-center">
             <div className="flex flex-col items-center mb-4 w-full">
               {session?.user?.image && (
@@ -228,6 +250,31 @@ export default function DashboardLayout({
                 </div>
               )}
             </div>
+
+            <div className="w-full mb-3 flex justify-center">
+              <button
+                onClick={() => setShowSettings(true)}
+                className={`flex items-center justify-center text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg ${
+                  isSidebarOpen ? "w-full" : "w-fit"
+                } px-3 py-2 mx-auto`}
+                title="Settings"
+              >
+                <span
+                  className={cx(
+                    "inline-flex items-center justify-center transition-transform duration-200 ease-out",
+                    "group-hover:scale-110",
+                    "text-[#c084fc]"
+                  )}
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 001.997 1.25c1.79-.32 2.947 1.92 1.64 3.227a1.724 1.724 0 000 2.432c1.307 1.306.15 3.546-1.64 3.226a1.724 1.724 0 00-1.997 1.25c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-1.997-1.25c-1.79.32-2.947-1.92-1.64-3.226a1.724 1.724 0 000-2.432c-1.307-1.307-.15-3.547 1.64-3.227.98.176 1.862-.46 1.997-1.25z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="12" cy="12" r="2.25" fill="currentColor"/>
+                  </svg>
+                </span>
+                {isSidebarOpen && <span className="ml-2 font-medium">Settings</span>}
+              </button>
+            </div>
+
             {session && (
               <button
                 onClick={() => signOut()}
@@ -258,6 +305,41 @@ export default function DashboardLayout({
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto  z-10">{children}</main>
+
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#141425] p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Settings</h3>
+              <button onClick={() => setShowSettings(false)} className="rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <label htmlFor="teamSelect" className="text-sm font-medium text-gray-700 dark:text-gray-300">Team</label>
+              <select
+                id="teamSelect"
+                value={teamValue}
+                onChange={(e) => setTeamValue(e.target.value)}
+                className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#0b0b16] px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#c084fc]"
+              >
+                {teams.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 dark:text-gray-400">This changes the active team stored on this device. Pages that use team context will pick this up on next load.</p>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setShowSettings(false)} className="rounded-full border px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">Cancel</button>
+              <button onClick={saveTeam} disabled={!teamValue.trim()} className={`rounded-full px-4 py-2 text-sm font-semibold ${teamValue.trim() ? 'bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] text-white hover:opacity-95' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
