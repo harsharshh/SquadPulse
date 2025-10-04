@@ -2,32 +2,55 @@
 
 import { useLayoutEffect, useRef } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
 import Header from "@/components/Header";
 import { gsap } from "gsap";
 
 export default function Home() {
-  const { data: session } = useSession();
-  const titleRef = useRef<HTMLHeadingElement | null>(null);
-  const subtitleRef = useRef<HTMLParagraphElement | null>(null);
-  const ctaRef = useRef<HTMLDivElement | null>(null);
-  const cardsRef = useRef<HTMLDivElement | null>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const subtitleRef = useRef<HTMLParagraphElement>(null);
+  const ctaRef = useRef<HTMLDivElement>(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-      tl.from(titleRef.current, { y: 24, autoAlpha: 0, duration: 0.6, immediateRender: false })
-        .from(subtitleRef.current, { y: 18, autoAlpha: 0, duration: 0.5, immediateRender: false }, "-=0.25")
-        .from(Array.from(ctaRef.current?.children ?? []), { y: 16, autoAlpha: 0, duration: 0.4, stagger: 0.08, immediateRender: false }, "-=0.25");
+      
+      if (titleRef.current && subtitleRef.current && ctaRef.current) {
+        tl.from(titleRef.current, { 
+          y: 24, 
+          autoAlpha: 0, 
+          duration: 0.6, 
+          immediateRender: false 
+        })
+        .from(subtitleRef.current, { 
+          y: 18, 
+          autoAlpha: 0, 
+          duration: 0.5, 
+          immediateRender: false 
+        }, "-=0.25")
+        .from(
+          Array.from(ctaRef.current.children), 
+          { 
+            y: 16, 
+            autoAlpha: 0, 
+            duration: 0.4, 
+            stagger: 0.08, 
+            immediateRender: false 
+          }, 
+          "-=0.25"
+        );
+      }
+
       if (cardsRef.current) {
+        const cards = cardsRef.current.querySelectorAll("[data-card]");
         tl.from(
-          Array.from(cardsRef.current.querySelectorAll("[data-card]")),
+          Array.from(cards),
           {
             y: 24,
             autoAlpha: 0,
             rotate: 1,
             duration: 0.6,
-            stagger: 0.2,          // appear one by one
+            stagger: 0.2,
             immediateRender: false,
           }
         );
@@ -66,13 +89,7 @@ export default function Home() {
               Plus a playful <span className="font-medium">CheerUp Mode</span> to lift the vibe.
             </p>
             
-            {/* {session && (
-              <div className="mt-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-                <p className="text-sm text-green-800 dark:text-green-200">
-                  ✅ Welcome back, {session.user?.name}! You're successfully authenticated.
-                </p>
-              </div>
-            )} */}
+            
 
             <div ref={ctaRef} className="mt-5 flex flex-col sm:flex-row items-center gap-3">
               <Link
