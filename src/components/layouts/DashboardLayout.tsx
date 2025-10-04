@@ -8,10 +8,14 @@ import Logo from "../Logo";
 import ThemeToggle from "../ThemeToggle";
 import Image from "next/image";
 
+const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
+
 interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
+  colorActive?: string;
+  colorHover?: string;
 }
 
 const navigation: NavItem[] = [
@@ -34,6 +38,8 @@ const navigation: NavItem[] = [
         />
       </svg>
     ),
+    colorActive: "text-[#f97316] dark:text-[#f97316]",
+    colorHover: "group-hover:text-[#f97316] dark:group-hover:text-[#f97316]",
   },
   {
     label: "Cheer Up Zone",
@@ -54,6 +60,8 @@ const navigation: NavItem[] = [
         />
       </svg>
     ),
+    colorActive: "text-[#fb7185] dark:text-[#fb7185]",
+    colorHover: "group-hover:text-[#fb7185] dark:group-hover:text-[#fb7185]",
   },
   {
     label: "Whispers Wall",
@@ -74,6 +82,8 @@ const navigation: NavItem[] = [
         />
       </svg>
     ),
+    colorActive: "text-[#c084fc] dark:text-[#c084fc]",
+    colorHover: "group-hover:text-[#c084fc] dark:group-hover:text-[#c084fc]",
   },
   {
     label: "Team Dashboard",
@@ -94,6 +104,8 @@ const navigation: NavItem[] = [
         />
       </svg>
     ),
+    colorActive: "text-[#38bdf8] dark:text-[#38bdf8]",
+    colorHover: "group-hover:text-[#38bdf8] dark:group-hover:text-[#38bdf8]",
   },
 ];
 
@@ -120,11 +132,11 @@ export default function DashboardLayout({
 
       {/* Sidebar */}
       <div
-        className={`$
+        className={`${
           isSidebarOpen ? "w-64" : "w-20"
         } transition-all duration-300 ease-in-out bg-gradient-to-b from-[#fff7ed] via-[#f3e8ff] to-[#e0e7ff] dark:bg-gradient-to-b dark:from-[#232136] dark:via-[#2d2250] dark:to-[#1a1a2e] border-r border-gray-200 dark:border-gray-700 flex flex-col justify-between items-center z-10`}
       >
-        <div className="flex items-center p-4">
+        <div className="flex items-center p-4 w-full">
           <div className="flex items-center justify-between w-full">
             <Logo variant={isSidebarOpen ? 'full' : 'compact'} />
             <button
@@ -156,16 +168,27 @@ export default function DashboardLayout({
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center py-3 ${
-                    isSidebarOpen ? "px-4 justify-start" : "justify-center w-full"
-                  } ${
+                  className={cx(
+                    "group flex items-center py-3 transition-colors",
+                    isSidebarOpen ? "px-4 justify-start" : "justify-center w-full",
                     pathname === item.href
-                      ? "bg-[#fb7185]/20 dark:bg-[#c084fc]/20 text-primary font-semibold shadow-sm"
-                      : "text-gray-700 dark:text-gray-300 hover:bg-[#fb7185]/10 dark:hover:bg-[#c084fc]/10"
-                  }`}
+                      ? cx("font-semibold bg-[#fb7185]/20 dark:bg-[#c084fc]/20", item.colorActive)
+                      : cx("text-gray-700 dark:text-gray-300 hover:bg-surface/10 dark:hover:bg-surface/10", item.colorHover)
+                  )}
                   title={isSidebarOpen ? undefined : item.label}
                 >
-                  {item.icon}
+                  <span
+                    className={cx(
+                      "mr-0 inline-flex items-center justify-center transition-transform duration-200 ease-out",
+                      "group-hover:scale-110",
+                      pathname === item.href
+                        ? item.colorActive
+                        : "text-gray-500 dark:text-gray-400"
+                    )}
+                  >
+                    {/* ensure SVG inherits currentColor for stroke/fill */}
+                    {item.icon}
+                  </span>
                   {isSidebarOpen && (
                     <span className="ml-3 text-sm font-medium">
                       {item.label}
