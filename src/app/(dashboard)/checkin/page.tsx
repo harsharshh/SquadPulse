@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +14,52 @@ const hexToRgba = (hex: string, alpha = 0.12) => {
   const b = bigint & 255;
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
+
+// GSAP-animated celebration face for check-in success
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const mouth = useRef<SVGPathElement | null>(null);
+
+  useLayoutEffect(() => {
+    const ctx = gsap.context(() => {
+      if (wrapRef.current) {
+        gsap.fromTo(
+          wrapRef.current,
+          { scale: 0.8, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(2)" }
+        );
+      }
+      if (mouth.current) {
+        gsap.fromTo(
+          mouth.current,
+          { strokeDashoffset: 40 },
+          { strokeDashoffset: 0, duration: 0.6, ease: "power2.out", delay: 0.2 }
+        );
+      }
+    });
+    return () => ctx.revert();
+  }, []);
+
+  return (
+    <div ref={wrapRef}>
+      <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Background circle */}
+        <circle cx="32" cy="32" r="28" fill="#10b981" />
+        {/* Animated check path */}
+        <path
+          ref={mouth}
+          d="M20 34 L28 42 L44 24"
+          stroke="#fff"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+          strokeDasharray="40"
+          strokeDashoffset="40"
+        />
+      </svg>
+    </div>
+  );
+}
 
 // Reusable GSAP-animated SVG face
 function MoodFace({ mood, activeColor, idleColor = "#e5e7eb", size = 64 }: { mood: 1|2|3|4|5; activeColor: string; idleColor?: string; size?: number }) {
@@ -298,6 +345,29 @@ export default function CheckInPage() {
     { date: "2 days ago", mood: 5, note: "Great release!" },
   ]);
 
+  // History detail modal + comments
+  const [historyModal, setHistoryModal] = useState<{ open: boolean; index: number | null }>({ open: false, index: null });
+  const [historyComments, setHistoryComments] = useState<Record<number, string[]>>({});
+  const [newHistoryComment, setNewHistoryComment] = useState<string>("");
+
+  const openHistoryModal = (index: number) => {
+    setHistoryModal({ open: true, index });
+    setNewHistoryComment("");
+  };
+  const closeHistoryModal = () => setHistoryModal({ open: false, index: null });
+
+  const addHistoryComment = () => {
+    if (!historyModal.open || historyModal.index == null) return;
+    const text = newHistoryComment.trim();
+    if (!text) return;
+    setHistoryComments((prev) => {
+      const arr = prev[historyModal.index!] ? [...prev[historyModal.index!]] : [];
+      arr.unshift(text);
+      return { ...prev, [historyModal.index!]: arr };
+    });
+    setNewHistoryComment("");
+  };
+
   // Aggregate team overview (mock state updated on submit)
   const [teamStats, setTeamStats] = useState({ avg: 3.6, total: 12, updated: "2 min ago" });
 
@@ -323,8 +393,11 @@ export default function CheckInPage() {
       }
 
       // Animate initial team bar to current avg
-      const pct = Math.min(100, Math.max(0, (teamStats.avg / 5) * 100));
-      if (barRef.current) gsap.fromTo(barRef.current, { width: 0 }, { width: `${pct}%`, duration: 0.8 });
+        const pct = Math.min(100, Math.max(0, (teamStats.avg / 5) * 100));
+        if (barRef.current) {
+        gsap.set(barRef.current, { width: 0 });
+        gsap.to(barRef.current, { width: `${pct}%`, duration: 0.8, ease: "power2.out" });
+        }
     });
     return () => ctx.revert();
   }, [showTeamPicker]);
@@ -495,8 +568,10 @@ export default function CheckInPage() {
 
                 {isSubmitted ? (
                   <div className="text-center">
-                    <div className="mb-6" data-celebrate>
-                      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-2xl dark:bg-green-900/20">✅</div>
+                    <div className="mb-6 flex flex-col items-center" data-celebrate>
+                      <div className="mb-4">
+                        <CelebrationFace />
+                      </div>
                       <h2 className="mb-2 text-2xl font-semibold text-foreground">Thanks for checking in!</h2>
                       <p className="mb-6 text-foreground/70">Your mood has been recorded. See you tomorrow.</p>
                     </div>
@@ -537,7 +612,7 @@ export default function CheckInPage() {
 
                     <div>
                       <label htmlFor="comment" className="mb-2 block text-sm font-medium text-foreground/90">
-                        Any additional thoughts to whisper anonymously ?
+                        Any additional thoughts to share anonymously ?
                       </label>
                       <textarea
                         id="comment"
@@ -605,7 +680,7 @@ export default function CheckInPage() {
               </div>
 
               {/* Team overview */}
-              <div ref={cardsRef} data-card className="z-[-1] rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/90 to-white/70 dark:from-[#1a1a2e]/80 dark:to-[#232136]/60 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/40">
+              <div ref={cardsRef} data-card className="rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/90 to-white/70 dark:from-[#1a1a2e]/80 dark:to-[#232136]/60 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/40">
                 <div className="mb-3 flex items-center gap-3">
                   <MoodFace mood={teamFaceMood} activeColor={teamFaceColor} size={48} />
                   <div>
@@ -615,12 +690,11 @@ export default function CheckInPage() {
                 </div>
 
                 {/* Progress bar */}
-                <div className="mb-3 h-3 w-full overflow-hidden rounded-full bg-foreground/10">
+                <div className="mb-3 h-3 w-full overflow-hidden rounded-full bg-foreground/10" style={{background: 'aliceblue'}}>
                   <div
                     ref={barRef}
                     className="h-full origin-center rounded-full bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc]"
-                    style={{ width: 0 }}
-                  />
+                    />
                 </div>
 
                 {/* Stats */}
@@ -660,14 +734,38 @@ export default function CheckInPage() {
                   <h3 className="mb-4 text-lg font-semibold text-foreground">Your recent check-ins</h3>
                   <div className="flex-1 overflow-y-auto pr-2">
                     <ul className="space-y-2">
-                      {myHistory.map((h, idx) => (
-                        <li key={idx} className="flex items-center justify-between rounded-lg border border-foreground/10 bg-foreground/[.03] px-3 py-2">
-                          <span className="text-sm text-foreground/70">{h.date}</span>
-                          <span className="text-sm font-medium text-foreground">
-                            {moodOptions.find((m) => m.value === h.mood)?.emoji} · {h.mood}
-                          </span>
-                        </li>
-                      ))}
+                      {myHistory.map((h, idx) => {
+                        const mood = moodOptions.find((m) => m.value === h.mood);
+                        const color = mood?.colorHex ?? "#9ca3af";
+                        const label = mood?.label ?? `Mood ${h.mood}`;
+                        return (
+                          <li
+                            key={idx}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => openHistoryModal(idx)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openHistoryModal(idx); } }}
+                            className="cursor-pointer rounded-xl border border-foreground/10 bg-gradient-to-tr from-white/80 to-white/60 dark:from-[#2d2250]/30 dark:to-[#1a1a2e]/30 px-3 py-2 shadow-sm transition hover:shadow hover:bg-foreground/5 focus:outline-none focus:ring-2 focus:ring-[#c084fc]/60"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <div className="shrink-0">
+                                  <MoodFace mood={h.mood as 1|2|3|4|5} activeColor={color} size={32} />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-semibold text-foreground">
+                                    {label} <span className="ml-1 text-foreground/60">· {h.mood}</span>
+                                  </div>
+                                  {h.note && (
+                                    <div className="text-xs text-foreground/70 line-clamp-1">{h.note}</div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-xs text-foreground/60">{h.date}</div>
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 </div>
@@ -676,6 +774,84 @@ export default function CheckInPage() {
           </div>
         </main>
       </div>
+      )}
+      {/* History modal */}
+      {historyModal.open && historyModal.index != null && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={(e) => { if (e.currentTarget === e.target) closeHistoryModal(); }}>
+          <div className="w-full max-w-2xl rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/95 to-white/80 dark:from-[#151527]/95 dark:to-[#1a1a2e]/80 p-6 shadow-2xl" role="dialog" aria-modal="true">
+            {/* Header */}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {(() => {
+                  const idx = historyModal.index as number;
+                  const h = myHistory[idx];
+                  const mood = moodOptions.find((m) => m.value === h.mood);
+                  const color = mood?.colorHex ?? '#9ca3af';
+                  const label = mood?.label ?? `Mood ${h.mood}`;
+                  return (
+                    <>
+                      <MoodFace mood={h.mood as 1|2|3|4|5} activeColor={color} size={40} />
+                      <div>
+                        <div className="text-base font-semibold text-foreground">{label} <span className="ml-1 text-foreground/60">· {h.mood}/5</span></div>
+                        <div className="text-xs text-foreground/60">{h.date}</div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+              <button onClick={closeHistoryModal} className="rounded-full p-1.5 hover:bg-foreground/10" aria-label="Close">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+
+            {/* Body: details */}
+            {(() => {
+              const idx = historyModal.index as number;
+              const h = myHistory[idx];
+              return (
+                <div className="space-y-4">
+                  {h.note && (
+                    <div className="rounded-xl border border-foreground/10 bg-foreground/[.03] p-3 text-sm text-foreground">
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-foreground/60">Original note</div>
+                      <div>{h.note}</div>
+                    </div>
+                  )}
+
+                  {/* Comments thread */}
+                  <div className="rounded-xl border border-foreground/10 bg-foreground/[.03] p-3">
+                    <div className="mb-2 text-sm font-semibold text-foreground">Comments</div>
+                    <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                      {(historyComments[idx] ?? []).length === 0 ? (
+                        <div className="text-xs text-foreground/60">No comments yet.</div>
+                      ) : (
+                        (historyComments[idx] ?? []).map((c, i) => (
+                          <div key={i} className="rounded-lg border border-foreground/10 bg-background/80 px-3 py-2 text-sm text-foreground">{c}</div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <input
+                        value={newHistoryComment}
+                        onChange={(e) => setNewHistoryComment(e.target.value)}
+                        placeholder="Add a comment…"
+                        className="flex-1 rounded-xl border border-foreground/15 bg-background/80 px-3 py-2 text-sm text-foreground placeholder:text-foreground/40 focus:border-transparent focus:ring-2 focus:ring-[#c084fc] dark:bg-foreground/5"
+                      />
+                      <button
+                        type="button"
+                        onClick={addHistoryComment}
+                        disabled={!newHistoryComment.trim()}
+                        className={`rounded-full px-3 py-2 text-sm font-semibold transition ${!newHistoryComment.trim() ? 'bg-foreground/10 text-foreground/60 cursor-not-allowed' : 'bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] text-white hover:opacity-95'}`}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
       )}
     </AuthGuard>
   );
