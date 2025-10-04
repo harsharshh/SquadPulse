@@ -2,10 +2,12 @@
 
 import { useLayoutEffect, useRef } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import Header from "@/components/Header";
 import { gsap } from "gsap";
 
 export default function Home() {
+  const { data: session } = useSession();
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const subtitleRef = useRef<HTMLParagraphElement | null>(null);
   const ctaRef = useRef<HTMLDivElement | null>(null);
@@ -63,6 +65,14 @@ export default function Home() {
               Team pulse and anonymous whisper wall for real‑time sentiment and safe expression.
               Plus a playful <span className="font-medium">CheerUp Mode</span> to lift the vibe.
             </p>
+            
+            {/* {session && (
+              <div className="mt-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                <p className="text-sm text-green-800 dark:text-green-200">
+                  ✅ Welcome back, {session.user?.name}! You're successfully authenticated.
+                </p>
+              </div>
+            )} */}
 
             <div ref={ctaRef} className="mt-5 flex flex-col sm:flex-row items-center gap-3">
               <Link
