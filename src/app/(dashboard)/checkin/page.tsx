@@ -151,6 +151,106 @@ const moodOptions = [
   { emoji: "🤩", label: "Amazing", value: 5, colorHex: "#3b82f6", ring: "ring-blue-400/40" },
 ];
 
+// Reusable Tailwind SelectDropdown component (theme-aware)
+function SelectDropdown({
+  value,
+  options,
+  onChange,
+  placeholder = "Select",
+  className = "",
+}: {
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!open) return;
+      const t = e.target as Node;
+      if (buttonRef.current?.contains(t)) return;
+      if (listRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  // Basic keyboard nav
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      setOpen(true);
+      return;
+    }
+    if (open) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+      }
+    }
+  };
+
+  const selected = value || "";
+
+  return (
+    <div className={`relative z-30 ${className}`} onKeyDown={onKeyDown}>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((s) => !s)}
+        className="w-full rounded-xl border border-foreground/15 bg-background/80 px-3 py-2 text-left text-foreground shadow-sm transition focus:border-transparent focus:ring-2 focus:ring-[#c084fc] dark:bg-foreground/5"
+      >
+        <span className="block truncate text-sm">{selected || placeholder}</span>
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-70">
+            <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
+
+      {open && (
+        <ul
+          ref={listRef}
+          role="listbox"
+          className="absolute z-50 mt-2 max-h-56 w-full overflow-auto rounded-xl border border-foreground/15 bg-white dark:bg-[#0b0b16] p-1.5 shadow-xl outline-none"
+        >
+          {options.map((opt) => {
+            const active = opt === value;
+            return (
+              <li
+                key={opt}
+                role="option"
+                aria-selected={active}
+                onClick={() => {
+                  onChange(opt);
+                  setOpen(false);
+                }}
+                className={`flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm transition hover:bg-foreground/10 hover:text-foreground ${active ? 'bg-foreground/10 font-semibold' : 'text-foreground/80'}`}
+              >
+                <span className="truncate">{opt}</span>
+                {active && (
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7.5 10.5l1.8 1.8 3.7-3.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function CheckInPage() {
   const { data: session } = useSession();
 
@@ -160,9 +260,34 @@ export default function CheckInPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  // Team state (placeholder data until backend wiring)
-  const [teamName, setTeamName] = useState("Core Squad");
-  const teams = ["Core Squad", "Web Guild", "Ops Crew"];
+  // Team state (stateful, allows adding new teams)
+  const [teamName, setTeamName] = useState("Jo Core");
+  const [teams, setTeams] = useState<string[]>(["Jo Core", "Communication Hub", "Product team"]);
+  // First-visit team selection flow
+  const [showTeamPicker, setShowTeamPicker] = useState<boolean>(true);
+  const [pickerSelected, setPickerSelected] = useState<string>("");
+  const [addingNew, setAddingNew] = useState<boolean>(false);
+  const [newTeamName, setNewTeamName] = useState<string>("");
+
+  useEffect(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('squadpulse.team') : null;
+      if (stored) {
+        setTeamName(stored);
+        setShowTeamPicker(false);
+      } else {
+        setShowTeamPicker(true);
+        setPickerSelected((prev) => prev || "Core Squad");
+      }
+    } catch {
+      setShowTeamPicker(true);
+    }
+  }, []);
+
+  // Guard: If pickerSelected is empty on first render, default to first team
+  useEffect(() => {
+    if (!pickerSelected && teams.length > 0) setPickerSelected(teams[0]);
+  }, [pickerSelected, teams]);
 
   // Local history for the signed-in user
   const [myHistory, setMyHistory] = useState<{ date: string; mood: number; note?: string }[]>([
@@ -182,6 +307,7 @@ export default function CheckInPage() {
 
   // Appear animation
   useLayoutEffect(() => {
+    if (showTeamPicker) return;
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
       tl.from(leftColRef.current, { y: 20, autoAlpha: 0, duration: 0.5 })
@@ -199,7 +325,7 @@ export default function CheckInPage() {
       if (barRef.current) gsap.fromTo(barRef.current, { width: 0 }, { width: `${pct}%`, duration: 0.8 });
     });
     return () => ctx.revert();
-  }, []);
+  }, [showTeamPicker]);
 
   // Whenever teamStats.avg changes, animate bar width
   useEffect(() => {
@@ -264,8 +390,81 @@ export default function CheckInPage() {
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-background">
-        <main className="mx-auto max-w-8xl px-6 py-8">
+      {showTeamPicker ? (
+        <div className="min-h-screen bg-background flex items-center justify-center px-6">
+          <div className="w-full max-w-lg rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/90 to-white/70 dark:from-[#1a1a2e]/80 dark:to-[#232136]/60 p-8 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/40 text-center">
+            <h1 className="text-2xl md:text-3xl font-semibold text-foreground">Choose your team to start</h1>
+            <p className="mt-2 text-sm text-foreground/70">We’ll remember your choice on this device.</p>
+            <div className="mt-6 space-y-4 text-left">
+              <label htmlFor="team-picker" className="text-sm font-medium text-foreground/90">Select your team</label>
+              <SelectDropdown
+                value={pickerSelected}
+                options={teams}
+                onChange={(v) => { setPickerSelected(v); setAddingNew(false); }}
+                className=""
+              />
+
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setAddingNew((s) => !s)}
+                  className="text-sm font-semibold text-foreground hover:text-[#fb7185]"
+                >
+                  {addingNew ? "Cancel adding new team" : "➕ Add your team"}
+                </button>
+                <button
+                  type="button"
+                  disabled={addingNew}
+                  onClick={() => {
+                    if (addingNew) return; // safety
+                    const chosen = pickerSelected || teams[0];
+                    setTeamName(chosen);
+                    try { localStorage.setItem('squadpulse.team', chosen); } catch {}
+                    setShowTeamPicker(false);
+                  }}
+                  className={`rounded-full bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] px-4 py-2 text-sm font-semibold text-white transition ${addingNew ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'hover:opacity-95'}`}
+                >
+                  Continue
+                </button>
+              </div>
+
+              {addingNew && (
+                <div className="mt-3 space-y-3">
+                  <label htmlFor="new-team" className="text-sm font-medium text-foreground/90">New team name</label>
+                  <input
+                    id="new-team"
+                    value={newTeamName}
+                    onChange={(e) => setNewTeamName(e.target.value)}
+                    placeholder="e.g. Platform Tribe"
+                    className="w-full rounded-xl border border-foreground/15 bg-background/80 px-3 py-2 text-foreground placeholder:text-foreground/40 focus:border-transparent focus:ring-2 focus:ring-[#fb7185] dark:bg-foreground/5"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      disabled={!newTeamName.trim()}
+                      onClick={() => {
+                        const name = newTeamName.trim();
+                        if (!name) return;
+                        if (!teams.includes(name)) setTeams((prev) => [...prev, name]);
+                        setTeamName(name);
+                        setPickerSelected(name);
+                        try { localStorage.setItem('squadpulse.team', name); } catch {}
+                        setShowTeamPicker(false);
+                      }}
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition ${!newTeamName.trim() ? 'bg-foreground/10 text-foreground/60 cursor-not-allowed' : 'bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] text-white hover:opacity-95'}`}
+                    >
+                      Save & continue
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="mt-6 text-xs text-foreground/60">You can change teams anytime in the settings.</div>
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-screen bg-background">
+          <main className="mx-auto max-w-8xl px-6 py-8">
           {/* Grid: Left (check-in + my history) | Right (team header + overview) */}
           <div className="grid grid-cols-1 gap-6 md:grid-cols-[7fr_3fr] h-full">
             {/* LEFT COLUMN */}
@@ -360,23 +559,17 @@ export default function CheckInPage() {
                   <h3 className="text-lg font-semibold text-foreground">{teamName}</h3>
                   <p className="text-sm text-foreground/60">Team configuration</p>
                 </div>
-                <div>
-                  <label className="sr-only" htmlFor="team-select">Change team</label>
-                  <select
-                    id="team-select"
+                <div className="w-48">
+                  <SelectDropdown
                     value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                    className="rounded-full border border-foreground/15 bg-background/80 px-3 py-2 text-sm text-foreground focus:border-transparent focus:ring-2 focus:ring-[#c084fc] dark:bg-foreground/5"
-                  >
-                    {teams.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                    options={teams}
+                    onChange={(v) => { setTeamName(v); try { localStorage.setItem('squadpulse.team', v); } catch {} }}
+                  />
                 </div>
               </div>
 
               {/* Team overview */}
-              <div ref={cardsRef} data-card className="rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/90 to-white/70 dark:from-[#1a1a2e]/80 dark:to-[#232136]/60 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/40">
+              <div ref={cardsRef} data-card className="z-[-1] rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/90 to-white/70 dark:from-[#1a1a2e]/80 dark:to-[#232136]/60 p-5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/40">
                 <h3 className="mb-3 text-lg font-semibold text-foreground">Team mood overview</h3>
 
                 {/* Progress bar */}
@@ -438,6 +631,7 @@ export default function CheckInPage() {
           </div>
         </main>
       </div>
+      )}
     </AuthGuard>
   );
 }
