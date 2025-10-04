@@ -114,7 +114,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const pathname = usePathname();
   const { data: session } = useSession();
 
@@ -257,7 +257,7 @@ export default function DashboardLayout({
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8 z-10">{children}</main>
+      <main className="flex-1 overflow-y-auto  z-10">{children}</main>
     </div>
   );
 }
