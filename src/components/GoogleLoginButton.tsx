@@ -4,7 +4,8 @@ import { signIn } from "next-auth/react";
 
 export default function GoogleLoginButton() {
   const handleGoogleLogin = () => {
-    signIn("google", { callbackUrl: "/" });
+    const callbackUrl = window.location.pathname + window.location.search;
+    signIn("google", { callbackUrl: callbackUrl || "/" });
   };
 
   return (
