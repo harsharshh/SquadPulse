@@ -105,7 +105,7 @@ export default function Home() {
                 Open Whisper Wall
               </Link>
               <Link
-                href="/play"
+                href="/cheerup"
                 className="rounded-full px-5 sm:px-6 h-11 sm:h-12 inline-flex items-center justify-center text-sm sm:text-base font-medium border border-foreground/15 hover:bg-foreground/5 transition whitespace-nowrap leading-none min-w-[176px]"
               >
                 Try CheerUp Mode

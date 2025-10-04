@@ -36,7 +36,7 @@ const navigation: NavItem[] = [
     ),
   },
   {
-    label: "Cheer Up",
+    label: "Cheer Up Zone",
     href: "/cheerup",
     icon: (
       <svg
@@ -56,7 +56,7 @@ const navigation: NavItem[] = [
     ),
   },
   {
-    label: "Whispers",
+    label: "Whispers Wall",
     href: "/whispers",
     icon: (
       <svg
@@ -71,6 +71,26 @@ const navigation: NavItem[] = [
           strokeLinejoin="round"
           strokeWidth={2}
           d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+        />
+      </svg>
+    ),
+  },
+  {
+    label: "Team Dashboard",
+    href: "/team-dashboard",
+    icon: (
+      <svg
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M3 10h4V3H3v7zm0 11h4v-7H3v7zm7 0h4V10h-4v11zm7 0h4v-4h-4v4zm0-7h4v-4h-4v4z"
         />
       </svg>
     ),
@@ -162,7 +182,7 @@ export default function DashboardLayout({
           <div className="flex justify-center p-4  w-full">
             <ThemeToggle variant={isSidebarOpen ? 'full' : 'icon'} />
           </div>
-          <div className="border-t border-gray-200 dark:border-gray-700 p-4 w-full flex flex-col items-center">
+          <div className="border-t border-gray-300 dark:border-gray-700 p-4 w-full flex flex-col items-center">
             <div className="flex flex-col items-center mb-4 w-full">
               {session?.user?.image && (
                 <Image
@@ -188,7 +208,7 @@ export default function DashboardLayout({
             {session && (
               <button
                 onClick={() => signOut()}
-                className={`flex items-center justify-center text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg ${
+                className={`flex items-center justify-center text-sm text-red-700 dark:text-red-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg ${
                   isSidebarOpen ? "w-full" : "w-fit"
                 } px-3 py-2 mx-auto`}
               >
