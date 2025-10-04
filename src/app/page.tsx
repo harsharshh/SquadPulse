@@ -77,9 +77,9 @@ export default function Home() {
           <div>
             <h1
               ref={titleRef}
-              className="text-4xl sm:text-5xl md:text-6xl font-extrabold leading-tight bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] bg-clip-text text-transparent tracking-tight"
+              className="text-3xl sm:text-4xl md:text-5xl font-extrabold leading-tight bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] bg-clip-text text-transparent tracking-tight"
             >
-              Squad<span className="align-baseline">Pulse</span>
+              Welcome to Squad<span className="align-baseline">Pulse</span>
             </h1>
             <p
               ref={subtitleRef}

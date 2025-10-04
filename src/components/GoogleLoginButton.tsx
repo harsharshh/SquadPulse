@@ -10,7 +10,7 @@ export default function GoogleLoginButton() {
   return (
     <button
       onClick={handleGoogleLogin}
-      className="flex items-center gap-3 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200 shadow-sm"
+      className="flex justify-center items-center gap-3 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200 shadow-sm"
     >
       <svg
         className="w-5 h-5"
