@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import Header from "@/components/Header";
 import AuthGuard from "@/components/AuthGuard";
 
 const motivationalQuotes = [
@@ -95,7 +94,7 @@ export default function CheerUpPage() {
   return (
     <AuthGuard>
       <div className="min-h-screen bg-background">
-        <Header />
+        
         
         <main className="max-w-6xl mx-auto px-6 py-8">
           <div className="text-center mb-8">

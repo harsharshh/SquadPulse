@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Header from "@/components/Header";
 import AuthGuard from "@/components/AuthGuard";
 
 interface Whisper {
@@ -72,7 +71,7 @@ export default function WhisperWallPage() {
   return (
     <AuthGuard>
       <div className="min-h-screen bg-background">
-        <Header />
+        
         
         <main className="max-w-4xl mx-auto px-6 py-8">
           <div className="text-center mb-8">

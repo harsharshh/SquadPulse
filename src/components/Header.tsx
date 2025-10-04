@@ -5,6 +5,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import GoogleLoginButton from "@/components/GoogleLoginButton";
 import UserProfile from "@/components/UserProfile";
 import PageNavigation from "@/components/PageNavigation";
+import Logo from "./Logo";
 
 export default function Header() {
   const { data: session, status } = useSession();
@@ -12,9 +13,7 @@ export default function Header() {
   return (
     <header className="relative z-10 flex items-center justify-between px-6 sm:px-10 py-6">
       <div className="flex items-center gap-4">
-        <span className="text-xl sm:text-2xl font-semibold bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] bg-clip-text text-transparent">
-          SquadPulse
-        </span>
+        <Logo />
         <PageNavigation />
       </div>
       <div className="flex items-center gap-4">
