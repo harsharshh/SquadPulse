@@ -596,7 +596,7 @@ useEffect(() => {
               <div className="shrink-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 pb-3 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
                 {/* Composer */}
                 <section>
-                  <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60 overflow-hidden">
+                  <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60 overflow-hidden shadow-md">
                     <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-neutral-200 dark:border-neutral-800">
                       <div className="flex items-center gap-2" id="composer-anchor">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#f97316] via-[#fb7185] to-[#c084fc]" />
@@ -681,7 +681,7 @@ useEffect(() => {
                   <article
                   key={post.id}
                   data-anim="card"
-                  className={`p-4 sm:p-5 rounded-2xl border ${categoryColors[post.category]} transition-all duration-200 hover:shadow-md flex min-h-[220px] flex-col`}
+                  className={`p-4 sm:p-5 rounded-2xl border ${categoryColors[post.category]} transition-all duration-200 shadow-md hover:shadow-lg flex min-h-[220px] flex-col`}
                 >
                     {/* Header */}
                     <div className="relative flex items-center justify-between gap-3">
@@ -815,7 +815,7 @@ useEffect(() => {
             <aside className="hidden lg:flex h-full min-h-0 flex-col py-2">
               <div className="sticky top-0 h-full min-h-0 flex flex-col space-y-4">
                 {/* a. Quick filters (compact) */}
-                <section data-anim="filters" className="shrink-0 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/70 backdrop-blur p-3">
+                <section data-anim="filters" className="shrink-0 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/70 backdrop-blur p-3 shadow-md">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Quick filters</h3>
                     <button
@@ -856,7 +856,7 @@ useEffect(() => {
                   </div>
                 </section>
                 {/* b. Snapshot */}
-                <section data-anim="snapshot" className="shrink-0 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/70 backdrop-blur p-4">
+                <section data-anim="snapshot" className="shrink-0 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/70 backdrop-blur p-4 shadow-md">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Snapshot</h3>
                     <span className="inline-flex items-center gap-2 text-xs text-neutral-500">
@@ -895,7 +895,7 @@ useEffect(() => {
                   </ul>
                 </section>
                 {/* c. Team members online */}
-                <section data-anim="online" className="flex flex-1 min-h-0 flex-col rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/70 backdrop-blur p-4">
+                <section data-anim="online" className="flex flex-1 min-h-0 flex-col rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/70 backdrop-blur p-4 shadow-md">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Team members online</h3>
                     <div className="text-xs text-neutral-500">{sampleParticipants.length} online</div>
