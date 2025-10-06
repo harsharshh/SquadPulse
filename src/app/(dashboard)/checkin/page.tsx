@@ -685,7 +685,7 @@ export default function CheckInPage() {
                 <div className="mb-3 flex items-center gap-3">
                   <MoodFace mood={teamFaceMood} activeColor={teamFaceColor} size={48} />
                   <div>
-                    <h3 className="text-lg font-semibold text-foreground">Team mood overview</h3>
+                    <h3 className="text-lg font-semibold text-foreground">Your mood overview</h3>
                     {/* <div className="text-sm text-foreground/70">Average: {teamStats.avg} / 5</div> */}
                   </div>
                 </div>
