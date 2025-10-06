@@ -16,6 +16,7 @@ const hexToRgba = (hex: string, alpha = 0.12) => {
 };
 
 // GSAP-animated celebration face for check-in success
+function CelebrationFace({ size = 72 }: { size?: number }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const mouth = useRef<SVGPathElement | null>(null);
 
