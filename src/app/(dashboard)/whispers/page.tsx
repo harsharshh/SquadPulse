@@ -176,7 +176,7 @@ function arcPath(cx: number, cy: number, rOuter: number, rInner: number, startAn
   ].join(" ");
 }
 
-type PieSlice = { key: Category; value: number; color: string; label: string; emoji: string };
+type PieSlice = { key: Category; value: number; color: string; label: string; emoji?: string };
 
 function Pie3D({
   data,
@@ -206,7 +206,9 @@ function Pie3D({
       ease: "power2.out",
       onUpdate: () => setProgress(obj.p),
     });
-    return () => tl.kill();
+    return () => {
+      tl.kill();
+    };
   }, [data]);
 
   // Build angles
