@@ -11,6 +11,29 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      if (account?.provider !== "google") {
+        return true;
+      }
+
+      const requireGainsightEmail = process.env.NEXTAUTH_REQUIRE_GAINSIGHT_EMAIL === "true";
+
+      if (!requireGainsightEmail) {
+        return true;
+      }
+
+      const email = user.email?.toLowerCase();
+
+      if (email && email.endsWith("@gainsight.com")) {
+        return true;
+      }
+
+      console.warn("Rejected sign-in attempt due to non-Gainsight email", {
+        providerAccountId: account.providerAccountId,
+      });
+
+      return false;
+    },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = (token.sub as string) ?? (token.id as string);
