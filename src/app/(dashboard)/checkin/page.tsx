@@ -238,6 +238,7 @@ export default function CheckInPage() {
     return moodOptions.find((m) => m.value === teamFaceMood)?.colorHex ?? "#9ca3af";
   }, [teamFaceMood]);
 
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMood) return;
