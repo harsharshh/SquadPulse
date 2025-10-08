@@ -1,6 +1,9 @@
 import GoogleProvider from "next-auth/providers/google";
+import type { NextAuthOptions } from "next-auth";
 
-export const authOptions = {
+import { ensureUserRecord, getUserRecord } from "@/lib/user-service";
+
+export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -8,17 +11,55 @@ export const authOptions = {
     }),
   ],
   callbacks: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async session({ session, token }: { session: any; token: any }) {
+    async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.sub!;
+        session.user.id = (token.sub as string) ?? (token.id as string);
+        if (token.anonymousId && typeof token.anonymousId === "string") {
+          session.user.anonymousId = token.anonymousId;
+        }
+        if (token.anonymousUsername && typeof token.anonymousUsername === "string") {
+          session.user.anonymousUsername = token.anonymousUsername;
+        }
+        if (typeof token.blocked === "boolean") {
+          session.user.blocked = token.blocked;
+        }
       }
       return session;
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async jwt({ token, user }: { token: any; user: any }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
+      }
+
+      const providerAccountId = account?.provider === "google"
+        ? account.providerAccountId
+        : token.sub;
+
+      if (providerAccountId) {
+        try {
+          if (user && account?.provider === "google" && account.providerAccountId) {
+            const ensuredRecord = await ensureUserRecord({
+              providerAccountId: account.providerAccountId,
+              email: user.email,
+              name: user.name,
+              image: user.image,
+            });
+
+            token.anonymousId = ensuredRecord.anonymousId;
+            token.anonymousUsername = ensuredRecord.anonymousUsername;
+            token.blocked = ensuredRecord.blocked;
+          } else {
+            const record = await getUserRecord(providerAccountId);
+
+            if (record) {
+              token.anonymousId = record.anonymousId;
+              token.anonymousUsername = record.anonymousUsername;
+              token.blocked = record.blocked;
+            }
+          }
+        } catch (error) {
+          console.error("Failed to populate JWT with user metadata", error);
+        }
       }
       return token;
     },
