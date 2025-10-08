@@ -152,12 +152,6 @@ const IconShare = () => (
   </svg>
 );
 
-const IconPlus = () => (
-  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-  </svg>
-);
-
 /* ---------- Pie 3D Helpers (SVG, no deps) ---------- */
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
   const angleRad = ((angleDeg - 90) * Math.PI) / 180.0;
@@ -408,7 +402,6 @@ export default function WhisperWallPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [filters, setFilters] = useState<Set<Category>>(new Set());
 
-  const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -451,14 +444,6 @@ useEffect(() => {
 
   return () => ctx.revert();
 }, []); // run only once on mount
-
-  const toggleExpand = (id: string) =>
-    setExpandedPosts((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
 
   const anonName = (id: string) => {
     // Deterministic anon label based on id
@@ -510,6 +495,14 @@ useEffect(() => {
       stats.categoryCounts.fun,
     ]
   );
+
+  const legendItems: Array<{ key: Category; color: string; label: string; count: number }> = [
+    { key: "general", color: "#a78bfa", label: "General", count: stats.categoryCounts.general },
+    { key: "praise", color: "#22c55e", label: "Praise", count: stats.categoryCounts.praise },
+    { key: "concern", color: "#ef4444", label: "Concern", count: stats.categoryCounts.concern },
+    { key: "idea", color: "#3b82f6", label: "Idea", count: stats.categoryCounts.idea },
+    { key: "fun", color: "#f97316", label: "Fun", count: stats.categoryCounts.fun },
+  ];
 
   const toggleLike = (postId: string) => {
     setWhispers((arr) =>
@@ -600,7 +593,7 @@ useEffect(() => {
                     <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-neutral-200 dark:border-neutral-800">
                       <div className="flex items-center gap-2" id="composer-anchor">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#f97316] via-[#fb7185] to-[#c084fc]" />
-                        <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">What's on your mind today?</span>
+                        <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">What&apos;s on your mind today?</span>
                       </div>
                       <button
                         onClick={() => setComposerOpen((v) => !v)}
@@ -874,22 +867,16 @@ useEffect(() => {
 
                   {/* Legend with counts (list view) */}
                   <ul className="mt-3 space-y-2">
-                    {([
-                      { key: "general", color: "#a78bfa", label: "General", count: stats.categoryCounts.general },
-                      { key: "praise",  color: "#22c55e", label: "Praise",  count: stats.categoryCounts.praise  },
-                      { key: "concern", color: "#ef4444", label: "Concern", count: stats.categoryCounts.concern },
-                      { key: "idea",    color: "#3b82f6", label: "Idea",    count: stats.categoryCounts.idea    },
-                      { key: "fun",     color: "#f97316", label: "Fun",     count: stats.categoryCounts.fun     },
-                    ] as const).map((i) => (
-                      <li key={i.key} className="flex items-center justify-between px-2 ">
+                    {legendItems.map((item) => (
+                      <li key={item.key} className="flex items-center justify-between px-2 ">
                         <div className="flex items-center gap-2 text-sm">
-                          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: i.color }} />
+                          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                           <span className="text-neutral-700 dark:text-neutral-300 inline-flex items-center gap-1">
-                            {i.label}
-                            <CategoryIcon kind={i.key as any} size={14} />
+                            {item.label}
+                            <CategoryIcon kind={item.key} size={14} />
                           </span>
                         </div>
-                        <span className="tabular-nums text-neutral-700 dark:text-neutral-300 text-sm">{i.count}</span>
+                        <span className="tabular-nums text-neutral-700 dark:text-neutral-300 text-sm">{item.count}</span>
                       </li>
                     ))}
                   </ul>

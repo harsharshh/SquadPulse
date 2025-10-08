@@ -159,7 +159,6 @@ function MoodFace({ mood, activeColor, idleColor = "#e5e7eb", size = 64 }: { moo
   }
 
   const faceFill = activeColor; // color comes from parent per mood
-  const stroke = "#0f172a"; // slate-900-ish for outlines in light; rely on currentColor in dark via blending
 
   return (
     <div ref={wrapRef} onMouseEnter={onHover} onMouseLeave={onLeave} className="select-none">
@@ -401,7 +400,7 @@ export default function CheckInPage() {
         }
     });
     return () => ctx.revert();
-  }, [showTeamPicker]);
+  }, [showTeamPicker, teamStats.avg]);
 
   // Whenever teamStats.avg changes, animate bar width
   useEffect(() => {
