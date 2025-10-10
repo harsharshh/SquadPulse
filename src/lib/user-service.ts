@@ -4,12 +4,16 @@ import { getDbClient } from "@/lib/db";
 
 type SqlClient = ReturnType<typeof getDbClient>;
 
+const USER_ROLES = ["ADMIN", "MEMBER", "GUEST"] as const;
+export type UserRole = typeof USER_ROLES[number];
+
 type UserRecordRow = {
   anonymous_id: string;
   anonymous_username: string | null;
   blocked: boolean;
   organization_id: string | null;
   team_id: string | null;
+  role: UserRole;
 };
 
 export type UserRecord = {
@@ -18,6 +22,7 @@ export type UserRecord = {
   blocked: boolean;
   organizationId: string | null;
   teamId: string | null;
+  role: UserRole;
 };
 
 export type UserSelection = {
@@ -32,6 +37,7 @@ type EnsureUserParams = {
   image?: string | null;
   organizationId?: string | null;
   teamId?: string | null;
+  role?: string | null;
 };
 
 const MAX_USERNAME_ATTEMPTS = 10;
@@ -67,6 +73,15 @@ const createQuery = (sql: SqlClient) => <T>(strings: TemplateStringsArray, ...va
 
 let schemaInitialized = false;
 
+function normalizeRole(input?: string | null): UserRole {
+  if (!input) return "MEMBER";
+  const upper = input.toUpperCase();
+  if (USER_ROLES.includes(upper as UserRole)) {
+    return upper as UserRole;
+  }
+  return "MEMBER";
+}
+
 export async function ensureUserRecord(params: EnsureUserParams): Promise<UserRecord> {
   const sql = getDbClient();
   const query = createQuery(sql);
@@ -74,7 +89,7 @@ export async function ensureUserRecord(params: EnsureUserParams): Promise<UserRe
   await ensureSchema(sql);
 
   const existingUser = await query<UserRecordRow[]>`
-    SELECT anonymous_id, anonymous_username, blocked, organization_id, team_id
+    SELECT anonymous_id, anonymous_username, blocked, organization_id, team_id, role
     FROM users
     WHERE provider_account_id = ${params.providerAccountId}
     LIMIT 1
@@ -82,6 +97,7 @@ export async function ensureUserRecord(params: EnsureUserParams): Promise<UserRe
 
   if (existingUser.length) {
     const ensuredRow = await ensureAnonymousUsername(sql, params.providerAccountId);
+    const roleToSet = params.role ? normalizeRole(params.role) : null;
     const [updatedUser] = await query<UserRecordRow[]>`
       UPDATE users
       SET email = ${params.email ?? null},
@@ -89,9 +105,10 @@ export async function ensureUserRecord(params: EnsureUserParams): Promise<UserRe
           image = ${params.image ?? null},
           organization_id = COALESCE(${params.organizationId ?? null}, organization_id),
           team_id = COALESCE(${params.teamId ?? null}, team_id),
+          role = COALESCE(${roleToSet}, role),
           updated_at = NOW()
       WHERE provider_account_id = ${params.providerAccountId}
-      RETURNING anonymous_id, anonymous_username, blocked, organization_id, team_id
+      RETURNING anonymous_id, anonymous_username, blocked, organization_id, team_id, role
     `;
 
     return mapUserRecord(updatedUser ?? ensuredRow);
@@ -107,7 +124,7 @@ export async function getUserRecord(providerAccountId: string): Promise<UserReco
   await ensureSchema(sql);
 
   const rows = await query<UserRecordRow[]>`
-    SELECT anonymous_id, anonymous_username, blocked, organization_id, team_id
+    SELECT anonymous_id, anonymous_username, blocked, organization_id, team_id, role
     FROM users
     WHERE provider_account_id = ${providerAccountId}
     LIMIT 1
@@ -174,6 +191,7 @@ async function ensureSchema(sql: SqlClient) {
       anonymous_username TEXT NOT NULL UNIQUE,
       organization_id TEXT,
       team_id TEXT,
+      role TEXT NOT NULL DEFAULT 'MEMBER',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -183,7 +201,8 @@ async function ensureSchema(sql: SqlClient) {
     ALTER TABLE users
     ADD COLUMN IF NOT EXISTS anonymous_username TEXT UNIQUE,
     ADD COLUMN IF NOT EXISTS organization_id TEXT,
-    ADD COLUMN IF NOT EXISTS team_id TEXT
+    ADD COLUMN IF NOT EXISTS team_id TEXT,
+    ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'MEMBER'
   `;
 
   await backfillMissingUsernames(sql);
@@ -200,6 +219,7 @@ async function createUserRecord(
   const anonymousId = randomUUID();
   const organizationId = params.organizationId ?? null;
   const teamId = params.teamId ?? null;
+  const role = normalizeRole(params.role);
 
   for (let attempt = 0; attempt < MAX_USERNAME_ATTEMPTS; attempt += 1) {
     const anonymousUsername = generateAnonymousUsername();
@@ -215,7 +235,8 @@ async function createUserRecord(
           blocked,
           anonymous_username,
           organization_id,
-          team_id
+          team_id,
+          role
         )
         VALUES (
           ${params.providerAccountId},
@@ -226,9 +247,10 @@ async function createUserRecord(
           FALSE,
           ${anonymousUsername},
           ${organizationId},
-          ${teamId}
+          ${teamId},
+          ${role}
         )
-        RETURNING anonymous_id, anonymous_username, blocked, organization_id, team_id
+        RETURNING anonymous_id, anonymous_username, blocked, organization_id, team_id, role
       `;
 
       return mapUserRecord(createdUser);
@@ -266,7 +288,7 @@ async function ensureAnonymousUsername(
             updated_at = NOW()
         WHERE provider_account_id = ${providerAccountId}
           AND (anonymous_username IS NULL OR anonymous_username = '')
-        RETURNING anonymous_id, anonymous_username, blocked, organization_id, team_id
+        RETURNING anonymous_id, anonymous_username, blocked, organization_id, team_id, role
       `;
 
       if (updatedRow) {
@@ -290,7 +312,7 @@ async function fetchUserRow(
 ) {
   const query = createQuery(sql);
   const [row] = await query<UserRecordRow[]>`
-    SELECT anonymous_id, anonymous_username, blocked, organization_id, team_id
+    SELECT anonymous_id, anonymous_username, blocked, organization_id, team_id, role
     FROM users
     WHERE provider_account_id = ${providerAccountId}
     LIMIT 1
@@ -366,5 +388,6 @@ function mapUserRecord(row?: UserRecordRow) {
     blocked: row.blocked,
     organizationId: row.organization_id,
     teamId: row.team_id,
+    role: row.role,
   } satisfies UserRecord;
 }

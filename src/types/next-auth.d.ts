@@ -8,6 +8,7 @@ declare module "next-auth" {
       anonymousId?: string;
       anonymousUsername?: string;
       blocked?: boolean;
+      role?: "ADMIN" | "MEMBER" | "GUEST";
     };
   }
 
@@ -22,5 +23,6 @@ declare module "next-auth/jwt" {
     anonymousId?: string;
     anonymousUsername?: string;
     blocked?: boolean;
+    role?: "ADMIN" | "MEMBER" | "GUEST";
   }
 }

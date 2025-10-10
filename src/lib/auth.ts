@@ -1,7 +1,29 @@
 import { getServerSession } from "next-auth/next";
 import GoogleProvider from "next-auth/providers/google";
 
-import { ensureUserRecord, getUserRecord } from "@/lib/user-service";
+import { ensureUserRecord, getUserRecord, type UserRole } from "@/lib/user-service";
+
+const ADMIN_EMAILS = (process.env.NEXTAUTH_ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((value) => value.trim().toLowerCase())
+  .filter(Boolean);
+
+const GUEST_EMAILS = (process.env.NEXTAUTH_GUEST_EMAILS ?? "")
+  .split(",")
+  .map((value) => value.trim().toLowerCase())
+  .filter(Boolean);
+
+function determineUserRole(email?: string | null): UserRole {
+  if (!email) return "GUEST";
+  const normalized = email.toLowerCase();
+  if (ADMIN_EMAILS.includes(normalized)) {
+    return "ADMIN";
+  }
+  if (GUEST_EMAILS.includes(normalized)) {
+    return "GUEST";
+  }
+  return "MEMBER";
+}
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -18,6 +40,7 @@ type AppSessionUser = {
   anonymousId?: string;
   anonymousUsername?: string;
   blocked?: boolean;
+  role?: UserRole;
 };
 
 type AppSession = {
@@ -31,6 +54,7 @@ type AuthToken = {
   anonymousId?: string;
   anonymousUsername?: string;
   blocked?: boolean;
+  role?: UserRole;
   [key: string]: unknown;
 };
 
@@ -118,6 +142,9 @@ export const authOptions: AuthConfig = {
         if (typeof token.blocked === "boolean") {
           session.user.blocked = token.blocked;
         }
+        if (typeof token.role === "string") {
+          session.user.role = token.role as UserRole;
+        }
       }
       return session;
     },
@@ -133,16 +160,19 @@ export const authOptions: AuthConfig = {
       if (providerAccountId) {
         try {
           if (user && account?.provider === "google" && account.providerAccountId) {
+            const derivedRole = determineUserRole(user.email);
             const ensuredRecord = await ensureUserRecord({
               providerAccountId: account.providerAccountId,
               email: user.email,
               name: user.name,
               image: user.image,
+              role: derivedRole,
             });
 
             token.anonymousId = ensuredRecord.anonymousId;
             token.anonymousUsername = ensuredRecord.anonymousUsername;
             token.blocked = ensuredRecord.blocked;
+            token.role = ensuredRecord.role;
           } else {
             const record = await getUserRecord(providerAccountId);
 
@@ -150,11 +180,15 @@ export const authOptions: AuthConfig = {
               token.anonymousId = record.anonymousId;
               token.anonymousUsername = record.anonymousUsername;
               token.blocked = record.blocked;
+              token.role = record.role;
             }
           }
         } catch (error) {
           console.error("Failed to populate JWT with user metadata", error);
         }
+      }
+      if (!token.role) {
+        token.role = determineUserRole(user?.email);
       }
       return token;
     },

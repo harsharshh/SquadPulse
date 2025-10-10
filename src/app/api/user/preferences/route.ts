@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
       email: session?.user?.email,
       name: session?.user?.name,
       image: session?.user?.image,
+      role: session?.user?.role,
     });
 
     const { searchParams } = new URL(request.url);
