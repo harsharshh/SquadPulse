@@ -2,16 +2,27 @@ import { randomUUID } from "crypto";
 
 import { getDbClient } from "@/lib/db";
 
+type SqlClient = ReturnType<typeof getDbClient>;
+
 type UserRecordRow = {
   anonymous_id: string;
   anonymous_username: string | null;
   blocked: boolean;
+  organization_id: string | null;
+  team_id: string | null;
 };
 
 export type UserRecord = {
   anonymousId: string;
   anonymousUsername: string;
   blocked: boolean;
+  organizationId: string | null;
+  teamId: string | null;
+};
+
+export type UserSelection = {
+  organizationId: string | null;
+  teamId: string | null;
 };
 
 type EnsureUserParams = {
@@ -19,6 +30,8 @@ type EnsureUserParams = {
   email?: string | null;
   name?: string | null;
   image?: string | null;
+  organizationId?: string | null;
+  teamId?: string | null;
 };
 
 const MAX_USERNAME_ATTEMPTS = 10;
@@ -49,15 +62,19 @@ const NOUNS = [
   "zephyr",
 ];
 
+const createQuery = (sql: SqlClient) => <T>(strings: TemplateStringsArray, ...values: unknown[]) =>
+  sql(strings, ...values) as unknown as Promise<T>;
+
 let schemaInitialized = false;
 
 export async function ensureUserRecord(params: EnsureUserParams): Promise<UserRecord> {
   const sql = getDbClient();
+  const query = createQuery(sql);
 
   await ensureSchema(sql);
 
-  const existingUser = await sql<UserRecordRow[]>`
-    SELECT anonymous_id, anonymous_username, blocked
+  const existingUser = await query<UserRecordRow[]>`
+    SELECT anonymous_id, anonymous_username, blocked, organization_id, team_id
     FROM users
     WHERE provider_account_id = ${params.providerAccountId}
     LIMIT 1
@@ -65,14 +82,16 @@ export async function ensureUserRecord(params: EnsureUserParams): Promise<UserRe
 
   if (existingUser.length) {
     const ensuredRow = await ensureAnonymousUsername(sql, params.providerAccountId);
-    const [updatedUser] = await sql<UserRecordRow[]>`
+    const [updatedUser] = await query<UserRecordRow[]>`
       UPDATE users
       SET email = ${params.email ?? null},
           name = ${params.name ?? null},
           image = ${params.image ?? null},
+          organization_id = COALESCE(${params.organizationId ?? null}, organization_id),
+          team_id = COALESCE(${params.teamId ?? null}, team_id),
           updated_at = NOW()
       WHERE provider_account_id = ${params.providerAccountId}
-      RETURNING anonymous_id, anonymous_username, blocked
+      RETURNING anonymous_id, anonymous_username, blocked, organization_id, team_id
     `;
 
     return mapUserRecord(updatedUser ?? ensuredRow);
@@ -83,11 +102,12 @@ export async function ensureUserRecord(params: EnsureUserParams): Promise<UserRe
 
 export async function getUserRecord(providerAccountId: string): Promise<UserRecord | null> {
   const sql = getDbClient();
+  const query = createQuery(sql);
 
   await ensureSchema(sql);
 
-  const rows = await sql<UserRecordRow[]>`
-    SELECT anonymous_id, anonymous_username, blocked
+  const rows = await query<UserRecordRow[]>`
+    SELECT anonymous_id, anonymous_username, blocked, organization_id, team_id
     FROM users
     WHERE provider_account_id = ${providerAccountId}
     LIMIT 1
@@ -102,7 +122,43 @@ export async function getUserRecord(providerAccountId: string): Promise<UserReco
   return mapUserRecord(ensuredRow ?? rows[0]);
 }
 
-async function ensureSchema(sql: ReturnType<typeof getDbClient>) {
+export async function getUserSelection(providerAccountId: string): Promise<UserSelection> {
+  const sql = getDbClient();
+  const query = createQuery(sql);
+  await ensureSchema(sql);
+
+  const [row] = await query<Array<{ organization_id: string | null; team_id: string | null }>>`
+    SELECT organization_id, team_id
+    FROM users
+    WHERE provider_account_id = ${providerAccountId}
+    LIMIT 1
+  `;
+
+  return {
+    organizationId: row?.organization_id ?? null,
+    teamId: row?.team_id ?? null,
+  };
+}
+
+export async function updateUserSelection(
+  providerAccountId: string,
+  organizationId: string | null,
+  teamId: string | null,
+) {
+  const sql = getDbClient();
+  const query = createQuery(sql);
+  await ensureSchema(sql);
+
+  await query`
+    UPDATE users
+    SET organization_id = ${organizationId},
+        team_id = ${teamId},
+        updated_at = NOW()
+    WHERE provider_account_id = ${providerAccountId}
+  `;
+}
+
+async function ensureSchema(sql: SqlClient) {
   if (schemaInitialized) {
     return;
   }
@@ -116,6 +172,8 @@ async function ensureSchema(sql: ReturnType<typeof getDbClient>) {
       anonymous_id TEXT NOT NULL,
       blocked BOOLEAN NOT NULL DEFAULT FALSE,
       anonymous_username TEXT NOT NULL UNIQUE,
+      organization_id TEXT,
+      team_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -123,7 +181,9 @@ async function ensureSchema(sql: ReturnType<typeof getDbClient>) {
 
   await sql`
     ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS anonymous_username TEXT UNIQUE
+    ADD COLUMN IF NOT EXISTS anonymous_username TEXT UNIQUE,
+    ADD COLUMN IF NOT EXISTS organization_id TEXT,
+    ADD COLUMN IF NOT EXISTS team_id TEXT
   `;
 
   await backfillMissingUsernames(sql);
@@ -133,16 +193,19 @@ async function ensureSchema(sql: ReturnType<typeof getDbClient>) {
 }
 
 async function createUserRecord(
-  sql: ReturnType<typeof getDbClient>,
+  sql: SqlClient,
   params: EnsureUserParams,
 ): Promise<UserRecord> {
+  const query = createQuery(sql);
   const anonymousId = randomUUID();
+  const organizationId = params.organizationId ?? null;
+  const teamId = params.teamId ?? null;
 
   for (let attempt = 0; attempt < MAX_USERNAME_ATTEMPTS; attempt += 1) {
     const anonymousUsername = generateAnonymousUsername();
 
     try {
-      const [createdUser] = await sql<UserRecordRow[]>`
+      const [createdUser] = await query<UserRecordRow[]>`
         INSERT INTO users (
           provider_account_id,
           email,
@@ -150,7 +213,9 @@ async function createUserRecord(
           image,
           anonymous_id,
           blocked,
-          anonymous_username
+          anonymous_username,
+          organization_id,
+          team_id
         )
         VALUES (
           ${params.providerAccountId},
@@ -159,9 +224,11 @@ async function createUserRecord(
           ${params.image ?? null},
           ${anonymousId},
           FALSE,
-          ${anonymousUsername}
+          ${anonymousUsername},
+          ${organizationId},
+          ${teamId}
         )
-        RETURNING anonymous_id, anonymous_username, blocked
+        RETURNING anonymous_id, anonymous_username, blocked, organization_id, team_id
       `;
 
       return mapUserRecord(createdUser);
@@ -178,10 +245,11 @@ async function createUserRecord(
 }
 
 async function ensureAnonymousUsername(
-  sql: ReturnType<typeof getDbClient>,
+  sql: SqlClient,
   providerAccountId: string,
   existingRow?: UserRecordRow,
 ) {
+  const query = createQuery(sql);
   const currentRow = existingRow ?? (await fetchUserRow(sql, providerAccountId));
 
   if (currentRow?.anonymous_username) {
@@ -192,13 +260,13 @@ async function ensureAnonymousUsername(
     const anonymousUsername = generateAnonymousUsername();
 
     try {
-      const [updatedRow] = await sql<UserRecordRow[]>`
+      const [updatedRow] = await query<UserRecordRow[]>`
         UPDATE users
         SET anonymous_username = ${anonymousUsername},
             updated_at = NOW()
         WHERE provider_account_id = ${providerAccountId}
           AND (anonymous_username IS NULL OR anonymous_username = '')
-        RETURNING anonymous_id, anonymous_username, blocked
+        RETURNING anonymous_id, anonymous_username, blocked, organization_id, team_id
       `;
 
       if (updatedRow) {
@@ -217,11 +285,12 @@ async function ensureAnonymousUsername(
 }
 
 async function fetchUserRow(
-  sql: ReturnType<typeof getDbClient>,
+  sql: SqlClient,
   providerAccountId: string,
 ) {
-  const [row] = await sql<UserRecordRow[]>`
-    SELECT anonymous_id, anonymous_username, blocked
+  const query = createQuery(sql);
+  const [row] = await query<UserRecordRow[]>`
+    SELECT anonymous_id, anonymous_username, blocked, organization_id, team_id
     FROM users
     WHERE provider_account_id = ${providerAccountId}
     LIMIT 1
@@ -230,8 +299,9 @@ async function fetchUserRow(
   return row;
 }
 
-async function backfillMissingUsernames(sql: ReturnType<typeof getDbClient>) {
-  const rows = await sql<{ provider_account_id: string }[]>`
+async function backfillMissingUsernames(sql: SqlClient) {
+  const query = createQuery(sql);
+  const rows = await query<{ provider_account_id: string }[]>`
     SELECT provider_account_id
     FROM users
     WHERE anonymous_username IS NULL OR anonymous_username = ''
@@ -242,8 +312,9 @@ async function backfillMissingUsernames(sql: ReturnType<typeof getDbClient>) {
   }
 }
 
-async function resolveDuplicateUsernames(sql: ReturnType<typeof getDbClient>) {
-  const duplicates = await sql<
+async function resolveDuplicateUsernames(sql: SqlClient) {
+  const query = createQuery(sql);
+  const duplicates = await query<
     Array<{ anonymous_username: string | null; provider_account_id: string }>
   >`
     SELECT anonymous_username, provider_account_id
@@ -259,7 +330,7 @@ async function resolveDuplicateUsernames(sql: ReturnType<typeof getDbClient>) {
   `;
 
   for (const duplicate of duplicates) {
-    await sql`
+    await query`
       UPDATE users
       SET anonymous_username = NULL
       WHERE provider_account_id = ${duplicate.provider_account_id}
@@ -293,5 +364,7 @@ function mapUserRecord(row?: UserRecordRow) {
     anonymousId: row.anonymous_id,
     anonymousUsername: row.anonymous_username,
     blocked: row.blocked,
+    organizationId: row.organization_id,
+    teamId: row.team_id,
   } satisfies UserRecord;
 }

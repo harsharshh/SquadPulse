@@ -1,6 +1,6 @@
 "use client";
 
-import type { HTMLAttributes, RefObject } from "react";
+import type { HTMLAttributes, MutableRefObject } from "react";
 import MoodFace from "@/components/checkin/MoodFace";
 
 interface MoodSnapshotCardProps extends HTMLAttributes<HTMLDivElement> {
@@ -8,7 +8,7 @@ interface MoodSnapshotCardProps extends HTMLAttributes<HTMLDivElement> {
   color: string;
   label: string;
   average: number;
-  barRef?: RefObject<HTMLDivElement>;
+  barRef?: MutableRefObject<HTMLDivElement | null>;
 }
 
 const MoodSnapshotCard = ({ mood, color, label, average, barRef, className = "", ...rest }: MoodSnapshotCardProps) => {

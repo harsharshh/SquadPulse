@@ -1,9 +1,81 @@
+import { getServerSession } from "next-auth/next";
 import GoogleProvider from "next-auth/providers/google";
-import type { NextAuthOptions } from "next-auth";
 
 import { ensureUserRecord, getUserRecord } from "@/lib/user-service";
 
-export const authOptions: NextAuthOptions = {
+type Awaitable<T> = T | Promise<T>;
+
+type ProviderAccount = {
+  provider?: string;
+  providerAccountId?: string;
+};
+
+type AppSessionUser = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+  anonymousId?: string;
+  anonymousUsername?: string;
+  blocked?: boolean;
+};
+
+type AppSession = {
+  user?: AppSessionUser;
+  [key: string]: unknown;
+};
+
+type AuthToken = {
+  id?: string;
+  sub?: string;
+  anonymousId?: string;
+  anonymousUsername?: string;
+  blocked?: boolean;
+  [key: string]: unknown;
+};
+
+type SignInArgs = {
+  user: {
+    id?: string;
+    email?: string | null;
+    name?: string | null;
+    image?: string | null;
+  };
+  account: ProviderAccount | null;
+};
+
+type SessionArgs = {
+  session: AppSession;
+  token: AuthToken;
+};
+
+type JwtArgs = {
+  token: AuthToken;
+  user?: {
+    id?: string;
+    email?: string | null;
+    name?: string | null;
+    image?: string | null;
+  } | null;
+  account?: ProviderAccount | null;
+};
+
+type AuthConfig = {
+  providers: ReturnType<typeof GoogleProvider>[];
+  callbacks: {
+    signIn: (args: SignInArgs) => Awaitable<boolean>;
+    session: (args: SessionArgs) => Awaitable<AppSession>;
+    jwt: (args: JwtArgs) => Awaitable<AuthToken>;
+  };
+  pages: {
+    signIn: string;
+  };
+  session: {
+    strategy: "jwt";
+  };
+};
+
+export const authOptions: AuthConfig = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -11,7 +83,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account }: SignInArgs) {
       if (account?.provider !== "google") {
         return true;
       }
@@ -22,7 +94,7 @@ export const authOptions: NextAuthOptions = {
         return true;
       }
 
-      const email = user.email?.toLowerCase();
+      const email = user.email?.toLowerCase() ?? null;
 
       if (email && email.endsWith("@gainsight.com")) {
         return true;
@@ -34,13 +106,13 @@ export const authOptions: NextAuthOptions = {
 
       return false;
     },
-    async session({ session, token }) {
+    async session({ session, token }: SessionArgs) {
       if (session.user) {
-        session.user.id = (token.sub as string) ?? (token.id as string);
-        if (token.anonymousId && typeof token.anonymousId === "string") {
+        session.user.id = (token.sub as string | undefined) ?? (token.id as string | undefined) ?? session.user.id;
+        if (typeof token.anonymousId === "string") {
           session.user.anonymousId = token.anonymousId;
         }
-        if (token.anonymousUsername && typeof token.anonymousUsername === "string") {
+        if (typeof token.anonymousUsername === "string") {
           session.user.anonymousUsername = token.anonymousUsername;
         }
         if (typeof token.blocked === "boolean") {
@@ -49,8 +121,8 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
-    async jwt({ token, user, account }) {
-      if (user) {
+    async jwt({ token, user, account }: JwtArgs) {
+      if (user?.id) {
         token.id = user.id;
       }
 
@@ -91,6 +163,10 @@ export const authOptions: NextAuthOptions = {
     signIn: "/auth/signin",
   },
   session: {
-    strategy: "jwt" as const,
+    strategy: "jwt",
   },
 };
+
+export async function getAuthSession(): Promise<AppSession | null> {
+  return getServerSession(authOptions as unknown as Record<string, unknown>) as Promise<AppSession | null>;
+}

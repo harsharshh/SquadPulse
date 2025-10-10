@@ -34,8 +34,3 @@ export const timeAgo = (date: Date) => {
   const days = Math.floor(hours / 24);
   return `${days}d`;
 };
-
-export const anonNameFromId = (id: string) => {
-  const sum = Array.from(id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  return `Anon-${(sum % 97) + 1}`;
-};

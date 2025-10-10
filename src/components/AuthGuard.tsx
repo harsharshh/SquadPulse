@@ -2,6 +2,8 @@
 
 import { useSession } from "next-auth/react";
 import { ReactNode } from "react";
+
+import TeamPreferencesProvider from "@/components/team/TeamPreferencesProvider";
 import GoogleLoginButton from "./GoogleLoginButton";
 
 interface AuthGuardProps {
@@ -49,5 +51,9 @@ export default function AuthGuard({ children, fallback }: AuthGuardProps) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <TeamPreferencesProvider>
+      {children}
+    </TeamPreferencesProvider>
+  );
 }

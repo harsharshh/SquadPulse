@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import type { Whisper } from "./types";
 import { CategoryIcon } from "@/components/icons/WhisperCategoryIcons";
-import { anonNameFromId, categoryTheme, timeAgo } from "./constants";
+import { categoryTheme, timeAgo } from "./constants";
 import { IconComment, IconHeart, IconShare } from "./icons";
 
 interface FullscreenPostModalProps {
@@ -41,7 +41,7 @@ const FullscreenPostModal = ({ open, post, onClose, onAddComment, onToggleLike }
                   </span>
                   <span className="capitalize">{post.category}</span>
                 </span>
-                <span className={`${categoryTheme[post.category].text} font-semibold`}>{anonNameFromId(post.id)}</span>
+                <span className={`${categoryTheme[post.category].text} font-semibold`}>{post.author ?? "Anonymous"}</span>
                 <span className="text-neutral-400">•</span>
                 <span className="opacity-70">{timeAgo(post.timestamp)}</span>
               </div>

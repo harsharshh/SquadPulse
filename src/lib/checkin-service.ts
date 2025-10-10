@@ -1,14 +1,33 @@
 import { randomUUID } from "crypto";
 
 import { getDbClient } from "@/lib/db";
+import {
+  DEFAULT_ORGANIZATION_ID,
+  DEFAULT_ORGANIZATION_NAME,
+  DEFAULT_TEAM_ID,
+  DEFAULT_TEAM_NAME,
+} from "@/lib/organization-constants";
+
+export {
+  DEFAULT_ORGANIZATION_ID,
+  DEFAULT_ORGANIZATION_NAME,
+  DEFAULT_TEAM_ID,
+  DEFAULT_TEAM_NAME,
+} from "@/lib/organization-constants";
 
 type SqlClient = ReturnType<typeof getDbClient>;
 
+type OrganizationRow = {
+  id: string;
+  name: string;
+  created_at: string;
+};
+
 type TeamRow = {
   id: string;
-  provider_account_id: string;
+  organization_id: string;
   name: string;
-  organization: string | null;
+  provider_account_id: string | null;
   created_at: string;
 };
 
@@ -32,10 +51,15 @@ type CommentRow = {
   anonymous_username: string | null;
 };
 
+export type Organization = {
+  id: string;
+  name: string;
+};
+
 export type Team = {
   id: string;
   name: string;
-  organization?: string | null;
+  organizationId: string;
 };
 
 export type CheckinHistoryItem = {
@@ -65,7 +89,7 @@ type CreateCheckinParams = {
   note?: string | null;
   teamId?: string | null;
   teamName?: string | null;
-  organization?: string | null;
+  organizationId?: string | null;
 };
 
 type CreateCommentParams = {
@@ -73,6 +97,9 @@ type CreateCommentParams = {
   authorProviderAccountId: string;
   content: string;
 };
+
+const createQuery = (sql: SqlClient) => <T>(strings: TemplateStringsArray, ...values: unknown[]) =>
+  sql(strings, ...values) as unknown as Promise<T>;
 
 let schemaInitialized = false;
 
@@ -82,18 +109,51 @@ async function ensureSchema(sql: SqlClient) {
   }
 
   await sql`
-    CREATE TABLE IF NOT EXISTS teams (
+    CREATE TABLE IF NOT EXISTS organizations (
       id TEXT PRIMARY KEY,
-      provider_account_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      organization TEXT,
+      name TEXT NOT NULL UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
 
   await sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_provider_account_lower_name
-      ON teams (provider_account_id, LOWER(name))
+    CREATE TABLE IF NOT EXISTS teams (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT,
+      name TEXT,
+      provider_account_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`
+    ALTER TABLE teams
+    ADD COLUMN IF NOT EXISTS organization_id TEXT,
+    ADD COLUMN IF NOT EXISTS provider_account_id TEXT,
+    ADD COLUMN IF NOT EXISTS name TEXT,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  `;
+
+  await sql`
+    ALTER TABLE teams
+    ALTER COLUMN provider_account_id DROP NOT NULL
+  `;
+
+  await sql`
+    UPDATE teams
+    SET organization_id = ${DEFAULT_ORGANIZATION_ID}
+    WHERE organization_id IS NULL
+  `;
+
+  await sql`
+    ALTER TABLE teams
+    ALTER COLUMN name SET NOT NULL,
+    ALTER COLUMN organization_id SET NOT NULL
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_org_lower_name
+      ON teams (organization_id, LOWER(name))
   `;
 
   await sql`
@@ -132,97 +192,132 @@ async function ensureSchema(sql: SqlClient) {
       ON checkin_comments (checkin_id, created_at DESC)
   `;
 
+  await sql`
+    INSERT INTO organizations (id, name)
+    VALUES (${DEFAULT_ORGANIZATION_ID}, ${DEFAULT_ORGANIZATION_NAME})
+    ON CONFLICT (name) DO NOTHING
+  `;
+
+  await sql`
+    INSERT INTO teams (id, organization_id, name)
+    VALUES (${DEFAULT_TEAM_ID}, ${DEFAULT_ORGANIZATION_ID}, ${DEFAULT_TEAM_NAME})
+    ON CONFLICT (id) DO NOTHING
+  `;
+
   schemaInitialized = true;
 }
 
-export async function listTeams(providerAccountId: string): Promise<Team[]> {
+export async function listOrganizations(): Promise<Organization[]> {
   const sql = getDbClient();
+  const query = createQuery(sql);
   await ensureSchema(sql);
 
-  const rows = await sql<TeamRow[]>`
-    SELECT id, name, organization
-    FROM teams
-    WHERE provider_account_id = ${providerAccountId}
+  const rows = await query<OrganizationRow[]>`
+    SELECT id, name, created_at
+    FROM organizations
     ORDER BY LOWER(name) ASC
   `;
 
-  return rows.map((row) => ({ id: row.id, name: row.name, organization: row.organization }));
+  return rows.map((row) => ({ id: row.id, name: row.name }));
 }
 
-export async function getOrCreateTeam(params: {
-  providerAccountId: string;
-  name: string;
-  organization?: string | null;
-}): Promise<Team> {
+export async function listTeams(organizationId?: string): Promise<Team[]> {
   const sql = getDbClient();
+  const query = createQuery(sql);
   await ensureSchema(sql);
 
-  const trimmedName = params.name.trim();
+  const targetOrganizationId = organizationId ?? DEFAULT_ORGANIZATION_ID;
+
+  const existing = await query<TeamRow[]>`
+    SELECT id, organization_id, name, provider_account_id, created_at
+    FROM teams
+    WHERE organization_id = ${targetOrganizationId}
+    ORDER BY LOWER(name) ASC
+  `;
+
+  return existing.map((row) => ({ id: row.id, name: row.name, organizationId: row.organization_id }));
+}
+
+export async function createTeam(organizationId: string, name: string, providerAccountId?: string | null): Promise<Team> {
+  const sql = getDbClient();
+  const query = createQuery(sql);
+  await ensureSchema(sql);
+
+  const trimmedName = name.trim();
   if (!trimmedName) {
     throw new Error("Team name cannot be empty");
   }
 
-  const normalized = trimmedName.toLowerCase();
-
-  const existing = await sql<TeamRow[]>`
-    SELECT id, name, organization
+  const existing = await query<TeamRow[]>`
+    SELECT id, organization_id, name, provider_account_id, created_at
     FROM teams
-    WHERE provider_account_id = ${params.providerAccountId}
-      AND LOWER(name) = ${normalized}
+    WHERE organization_id = ${organizationId}
+      AND LOWER(name) = ${trimmedName.toLowerCase()}
     LIMIT 1
   `;
 
   if (existing.length) {
     const row = existing[0];
-    return { id: row.id, name: row.name, organization: row.organization };
+    return { id: row.id, name: row.name, organizationId: row.organization_id };
   }
 
   const teamId = randomUUID();
-
-  const [created] = await sql<TeamRow[]>`
-    INSERT INTO teams (id, provider_account_id, name, organization)
-    VALUES (
-      ${teamId},
-      ${params.providerAccountId},
-      ${trimmedName},
-      ${params.organization ?? null}
-    )
-    RETURNING id, name, organization
+  const [created] = await query<TeamRow[]>`
+    INSERT INTO teams (id, organization_id, name, provider_account_id)
+    VALUES (${teamId}, ${organizationId}, ${trimmedName}, ${providerAccountId ?? null})
+    RETURNING id, organization_id, name, provider_account_id, created_at
   `;
 
-  return { id: created.id, name: created.name, organization: created.organization };
+  return { id: created.id, name: created.name, organizationId: created.organization_id };
 }
 
 export async function createCheckin(params: CreateCheckinParams): Promise<CheckinHistoryItem> {
   const sql = getDbClient();
+  const query = createQuery(sql);
   await ensureSchema(sql);
 
   if (!Number.isInteger(params.mood) || params.mood < 1 || params.mood > 5) {
     throw new Error("Mood value must be an integer between 1 and 5");
   }
 
+  const organizationId = params.organizationId ?? DEFAULT_ORGANIZATION_ID;
   let teamId = params.teamId ?? null;
   let teamName: string | null = null;
 
   if (params.teamName && params.teamName.trim()) {
-    const team = await getOrCreateTeam({
-      providerAccountId: params.providerAccountId,
-      name: params.teamName,
-      organization: params.organization ?? null,
-    });
-    teamId = team.id;
-    teamName = team.name;
+    const trimmedName = params.teamName.trim();
+
+    const existingTeam = await query<TeamRow[]>`
+      SELECT id, organization_id, name, provider_account_id, created_at
+      FROM teams
+      WHERE organization_id = ${organizationId}
+        AND LOWER(name) = ${trimmedName.toLowerCase()}
+      LIMIT 1
+    `;
+
+    if (existingTeam.length) {
+      teamId = existingTeam[0].id;
+      teamName = existingTeam[0].name;
+    } else {
+      const newTeamId = randomUUID();
+      const [createdTeam] = await query<TeamRow[]>`
+        INSERT INTO teams (id, organization_id, name, provider_account_id)
+        VALUES (${newTeamId}, ${organizationId}, ${trimmedName}, ${params.providerAccountId ?? null})
+        RETURNING id, organization_id, name, provider_account_id, created_at
+      `;
+      teamId = createdTeam.id;
+      teamName = createdTeam.name;
+    }
   } else if (teamId) {
-    const rows = await sql<TeamRow[]>`
-      SELECT id, name
+    const rows = await query<TeamRow[]>`
+      SELECT id, organization_id, name, provider_account_id, created_at
       FROM teams
       WHERE id = ${teamId}
-        AND provider_account_id = ${params.providerAccountId}
       LIMIT 1
     `;
 
     if (!rows.length) {
-      throw new Error("Team not found for user");
+      throw new Error("Team not found");
     }
 
     teamName = rows[0].name;
@@ -231,7 +326,7 @@ export async function createCheckin(params: CreateCheckinParams): Promise<Checki
   const checkinId = randomUUID();
   const note = params.note?.trim() ?? null;
 
-  const [created] = await sql<UserHistoryRow[]>`
+  const [created] = await query<UserHistoryRow[]>`
     INSERT INTO checkins (id, provider_account_id, team_id, mood, note)
     VALUES (
       ${checkinId},
@@ -255,9 +350,10 @@ export async function createCheckin(params: CreateCheckinParams): Promise<Checki
 
 export async function listUserCheckins(providerAccountId: string, limit = 20) {
   const sql = getDbClient();
+  const query = createQuery(sql);
   await ensureSchema(sql);
 
-  const rows = await sql<UserHistoryRow[]>`
+  const rows = await query<UserHistoryRow[]>`
     SELECT
       c.id,
       c.provider_account_id,
@@ -284,9 +380,10 @@ export async function listUserCheckins(providerAccountId: string, limit = 20) {
 
 export async function getUserTeamStats(providerAccountId: string): Promise<TeamStats> {
   const sql = getDbClient();
+  const query = createQuery(sql);
   await ensureSchema(sql);
 
-  const [row] = await sql<
+  const [row] = await query<
     Array<{ avg_mood: string | null; total_checkins: string; last_checkin_at: string | null }>
   >`
     SELECT
@@ -306,9 +403,10 @@ export async function getUserTeamStats(providerAccountId: string): Promise<TeamS
 
 export async function listTeamFeed(teamId: string, limit = 10) {
   const sql = getDbClient();
+  const query = createQuery(sql);
   await ensureSchema(sql);
 
-  const rows = await sql<
+  const rows = await query<
     Array<{ id: string; mood: number; note: string | null; created_at: string; anonymous_username: string | null }>
   >`
     SELECT
@@ -335,6 +433,7 @@ export async function listTeamFeed(teamId: string, limit = 10) {
 
 export async function createComment(params: CreateCommentParams): Promise<Comment> {
   const sql = getDbClient();
+  const query = createQuery(sql);
   await ensureSchema(sql);
 
   const trimmed = params.content.trim();
@@ -344,7 +443,7 @@ export async function createComment(params: CreateCommentParams): Promise<Commen
 
   const commentId = randomUUID();
 
-  const [created] = await sql<CommentRow[]>`
+  const [created] = await query<CommentRow[]>`
     INSERT INTO checkin_comments (id, checkin_id, author_provider_account_id, content)
     VALUES (
       ${commentId},
@@ -366,9 +465,10 @@ export async function createComment(params: CreateCommentParams): Promise<Commen
 
 export async function listComments(checkinId: string): Promise<Comment[]> {
   const sql = getDbClient();
+  const query = createQuery(sql);
   await ensureSchema(sql);
 
-  const rows = await sql<CommentRow[]>`
+  const rows = await query<CommentRow[]>`
     SELECT
       id,
       checkin_id,

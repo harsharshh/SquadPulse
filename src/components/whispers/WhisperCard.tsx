@@ -1,7 +1,7 @@
 "use client";
 
 import { categoryColors } from "./constants";
-import { anonNameFromId, timeAgo } from "./constants";
+import { timeAgo } from "./constants";
 import type { Whisper } from "./types";
 import { CategoryIcon } from "@/components/icons/WhisperCategoryIcons";
 import { IconHeart, IconComment, IconShare } from "./icons";
@@ -16,6 +16,7 @@ interface WhisperCardProps {
   onLike: (postId: string) => void;
   onComment: (post: Whisper) => void;
   onShare: (postId: string) => void;
+  deleting?: boolean;
 }
 
 const WhisperCard = ({
@@ -28,6 +29,7 @@ const WhisperCard = ({
   onLike,
   onComment,
   onShare,
+  deleting = false,
 }: WhisperCardProps) => {
   return (
     <article
@@ -43,7 +45,7 @@ const WhisperCard = ({
             <span className="capitalize">{post.category}</span>
           </span>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{anonNameFromId(post.id)}</span>
+            <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{post.author ?? "Anonymous"}</span>
             <span className="text-neutral-400">•</span>
             <span className="text-xs text-neutral-500">{timeAgo(post.timestamp)}</span>
           </div>
@@ -69,9 +71,12 @@ const WhisperCard = ({
                   </button>
                   <button
                     onClick={() => onDelete(post.id)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 text-red-600 dark:text-red-400"
+                    disabled={deleting}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
+                      deleting ? "text-neutral-400 cursor-not-allowed" : "text-red-600 dark:text-red-400"
+                    }`}
                   >
-                    Delete
+                    {deleting ? "Deleting…" : "Delete"}
                   </button>
                 </>
               ) : (

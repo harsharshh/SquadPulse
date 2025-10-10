@@ -11,11 +11,17 @@ import MoodFace from "@/components/checkin/MoodFace";
 import MoodOverviewCard from "@/components/checkin/MoodOverviewCard";
 import RecentCheckinsCard from "@/components/checkin/RecentCheckinsCard";
 import { moodOptions } from "@/components/checkin/constants";
+import { useTeamPreferences } from "@/components/team/TeamPreferencesProvider";
+
+type OrganizationOption = {
+  id: string;
+  name: string;
+};
 
 type TeamOption = {
   id: string;
   name: string;
-  organization?: string | null;
+  organizationId: string;
 };
 
 type HistoryItem = {
@@ -49,7 +55,10 @@ type TeamStatsResponse = {
 
 type DashboardResponse = {
   unauthorized?: boolean;
+  organizations?: OrganizationOption[];
+  organizationId?: string;
   teams?: TeamOption[];
+  teamId?: string | null;
   history?: HistoryItem[];
   stats?: TeamStatsResponse;
   teamFeed?: TeamFeedItem[];
@@ -60,8 +69,6 @@ type TeamStatsState = {
   total: number;
   updated: string;
 };
-
-const TEAM_STORAGE_KEY = "squadpulse.teamId";
 
 function formatRelativeTime(iso: string | null): string {
   if (!iso) return "—";
@@ -122,113 +129,6 @@ function sortTeams(teams: TeamOption[]): TeamOption[] {
   return [...teams].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
-function formatOrgName(raw?: string | null) {
-  if (!raw) return "Gainsight";
-  const base = raw.split("@").pop() ?? raw;
-  const domain = base.split(".")[0] ?? base;
-  return domain
-    .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function SelectDropdown({
-  value,
-  options,
-  onChange,
-  placeholder = "Select",
-  className = "",
-}: {
-  value: string | null;
-  options: Array<{ value: string; label: string }>;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  className?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const listRef = useRef<HTMLUListElement | null>(null);
-
-  useEffect(() => {
-    function onDocClick(event: MouseEvent) {
-      if (!open) return;
-      const target = event.target as Node;
-      if (buttonRef.current?.contains(target)) return;
-      if (listRef.current?.contains(target)) return;
-      setOpen(false);
-    }
-
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
-
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    if (!open && (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ")) {
-      event.preventDefault();
-      setOpen(true);
-      return;
-    }
-
-    if (open && event.key === "Escape") {
-      event.preventDefault();
-      setOpen(false);
-    }
-  };
-
-  const selectedOption = options.find((opt) => opt.value === value);
-  const selectedLabel = selectedOption?.label ?? "";
-
-  return (
-    <div className={`relative z-30 ${className}`} onKeyDown={onKeyDown}>
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((state) => !state)}
-        className="w-full rounded-xl border border-foreground/15 bg-background/80 px-3 py-2 text-left text-foreground shadow-sm transition focus:border-transparent focus:ring-2 focus:ring-[#c084fc] dark:bg-foreground/5"
-      >
-        <span className="block truncate text-sm">{selectedLabel || placeholder}</span>
-        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-70">
-            <path d="M6 8l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
-      </button>
-
-      {open && (
-        <ul
-          ref={listRef}
-          role="listbox"
-          className="absolute z-50 mt-2 max-h-56 w-full overflow-auto rounded-xl border border-foreground/15 bg-white p-1.5 shadow-xl outline-none dark:bg-[#0b0b16]"
-        >
-          {options.map((opt) => {
-            const active = opt.value === value;
-            return (
-              <li
-                key={opt.value}
-                role="option"
-                aria-selected={active}
-                onClick={() => {
-                  onChange(opt.value);
-                  setOpen(false);
-                }}
-                className={`flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm transition hover:bg-foreground/10 hover:text-foreground ${active ? "bg-foreground/10 font-semibold" : "text-foreground/80"}`}
-              >
-                <span className="truncate">{opt.label}</span>
-                {active && (
-                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M7.5 10.5l1.8 1.8 3.7-3.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 function SpinnerIcon({ size = 48 }: { size?: number }) {
   const dimension = `${size}px`;
   return (
@@ -250,26 +150,15 @@ function FullscreenLoader({ message }: { message: string }) {
   );
 }
 
-function InlineLoader({ message }: { message: string }) {
-  return (
-    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center rounded-2xl bg-background/80 backdrop-blur-sm">
-      <SpinnerIcon size={40} />
-      <p className="mt-3 text-xs font-medium text-foreground/70">{message}</p>
-    </div>
-  );
-}
-
-export default function CheckInPage() {
+function CheckInPageContent() {
   const { data: session } = useSession();
+  const { ready: teamPreferencesReady, selection, openSelector } = useTeamPreferences();
 
+  const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [, setTeamFeed] = useState<TeamFeedItem[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
-  const [pickerSelected, setPickerSelected] = useState<string | null>(null);
-  const [showTeamPicker, setShowTeamPicker] = useState<boolean>(false);
-  const [addingNew, setAddingNew] = useState<boolean>(false);
-  const [newTeamName, setNewTeamName] = useState<string>("");
-  const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
@@ -296,16 +185,13 @@ export default function CheckInPage() {
   const userFirstName = useMemo(() => (session?.user?.name ?? "").split(" ")[0] || "there", [session]);
   const selectedMoodColor = useMemo(() => moodOptions.find((mood) => mood.value === selectedMood)?.colorHex ?? null, [selectedMood]);
 
-  const teamOptions = useMemo(() => sortTeams(teams).map((team) => ({ value: team.id, label: team.name })), [teams]);
   const selectedTeam = useMemo(() => teams.find((team) => team.id === selectedTeamId) ?? null, [teams, selectedTeamId]);
-  const selectedTeamName = selectedTeam?.name ?? teamOptions.find((team) => team.value === pickerSelected)?.label ?? "Your Team";
-  const orgName = useMemo(() => {
-    if (selectedTeam?.organization) {
-      return formatOrgName(selectedTeam.organization);
-    }
-    const emailDomain = session?.user?.email?.split("@")[1] ?? null;
-    return formatOrgName(emailDomain);
-  }, [selectedTeam, session]);
+  const selectedOrganization = useMemo(
+    () => organizations.find((org) => org.id === selectedOrganizationId) ?? null,
+    [organizations, selectedOrganizationId],
+  );
+  const selectedTeamName = selectedTeam?.name ?? "Your Team";
+  const orgName = selectedOrganization?.name ?? "Gainsight, Inc";
 
   const teamFaceMood = useMemo(() => {
     const rounded = Math.round(teamStats.avg);
@@ -317,67 +203,122 @@ export default function CheckInPage() {
     [teamFaceMood],
   );
 
-  const fetchDashboardData = useCallback(async (teamId?: string | null) => {
-    const search = teamId ? `?teamId=${encodeURIComponent(teamId)}` : "";
-    const response = await fetch(`/api/checkins${search}`, { cache: "no-store" });
+  const fetchDashboardData = useCallback(
+    async (options?: { organizationId?: string | null; teamId?: string | null }) => {
+      const params = new URLSearchParams();
+      if (options?.organizationId) {
+        params.set("organizationId", options.organizationId);
+      }
+      if (options?.teamId) {
+        params.set("teamId", options.teamId);
+      }
+      const query = params.toString();
+      const response = await fetch(`/api/checkins${query ? `?${query}` : ""}`, { cache: "no-store" });
 
-    if (response.status === 401) {
-      return { unauthorized: true } satisfies DashboardResponse;
-    }
+      if (response.status === 401) {
+        return { unauthorized: true } satisfies DashboardResponse;
+      }
 
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || "Failed to load data");
-    }
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to load data");
+      }
 
-    return (await response.json()) as DashboardResponse;
-  }, []);
+      return (await response.json()) as DashboardResponse;
+    },
+    [],
+  );
 
   useEffect(() => {
-    let cancelled = false;
+    function onPreferencesUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ organizationId?: string | null; teamId?: string | null }>).detail;
+      if (!detail) return;
 
-    async function loadInitialData() {
-      setIsPageLoading(true);
+      const orgId = detail.organizationId ?? null;
+      const newTeamId = detail.teamId ?? null;
+
+      setSelectedOrganizationId(orgId);
+      setSelectedTeamId(newTeamId);
+
+      if (!(orgId && newTeamId)) {
+        openSelector();
+        return;
+      }
+
+      fetchDashboardData({ organizationId: orgId, teamId: newTeamId })
+        .then((data) => {
+          if (!data || (data as DashboardResponse).unauthorized) return;
+          const payload = data as DashboardResponse;
+          setTeams(payload.teams ? sortTeams(payload.teams) : []);
+          setMyHistory(payload.history ?? []);
+          setTeamStats(mapTeamStats(payload.stats));
+          setTeamFeed(payload.teamFeed ?? []);
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    }
+
+    window.addEventListener("user-preferences-updated", onPreferencesUpdated as EventListener);
+    return () => {
+      window.removeEventListener("user-preferences-updated", onPreferencesUpdated as EventListener);
+    };
+  }, [fetchDashboardData, openSelector]);
+
+  useEffect(() => {
+    if (!teamPreferencesReady) return;
+
+    const orgId = selection.organizationId;
+    const teamId = selection.teamId;
+
+    if (!orgId || !teamId) {
+      setOrganizations([]);
+      setTeams([]);
+      setMyHistory([]);
+      setTeamStats({ avg: 0, total: 0, updated: "—" });
+      setTeamFeed([]);
+      setSelectedOrganizationId(null);
+      setSelectedTeamId(null);
+      setError(null);
+      setIsPageLoading(false);
+      setInitialized(true);
+      return;
+    }
+
+    setSelectedOrganizationId(orgId);
+    setSelectedTeamId(teamId);
+
+    let cancelled = false;
+    setIsPageLoading(true);
+
+    (async () => {
       try {
-        const savedTeamId = typeof window === "undefined" ? null : localStorage.getItem(TEAM_STORAGE_KEY);
-        const data = await fetchDashboardData(savedTeamId);
+        const data = await fetchDashboardData({ organizationId: orgId, teamId });
         if (cancelled) return;
 
         if (data.unauthorized) {
+          setError("Your session expired. Please sign in again.");
+          setOrganizations([]);
           setTeams([]);
           setMyHistory([]);
           setTeamStats({ avg: 0, total: 0, updated: "—" });
+          setTeamFeed([]);
+          setSelectedOrganizationId(null);
           setSelectedTeamId(null);
-          setPickerSelected(null);
-          setShowTeamPicker(true);
-          setError(null);
+          openSelector();
           return;
         }
 
-        const normalizedTeams = data.teams ? sortTeams(data.teams) : [];
-        setTeams(normalizedTeams);
+        setOrganizations(data.organizations ?? []);
+        setTeams(sortTeams(data.teams ?? []));
         setMyHistory(data.history ?? []);
         setTeamStats(mapTeamStats(data.stats));
         setTeamFeed(data.teamFeed ?? []);
-
-        const availableTeamIds = new Set(normalizedTeams.map((team) => team.id));
-
-        if (savedTeamId && availableTeamIds.has(savedTeamId)) {
-          setSelectedTeamId(savedTeamId);
-          setPickerSelected(savedTeamId);
-          setShowTeamPicker(false);
-        } else {
-          setSelectedTeamId(null);
-          setPickerSelected(normalizedTeams[0]?.id ?? null);
-          setShowTeamPicker(true);
-        }
-
         setError(null);
       } catch (err) {
         console.error(err);
         if (!cancelled) {
           setError("Failed to load check-in data. Please try again.");
-          setShowTeamPicker(true);
         }
       } finally {
         if (!cancelled) {
@@ -385,18 +326,14 @@ export default function CheckInPage() {
           setInitialized(true);
         }
       }
-    }
-
-    loadInitialData();
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [fetchDashboardData]);
+  }, [teamPreferencesReady, selection.organizationId, selection.teamId, fetchDashboardData, openSelector]);
 
   useLayoutEffect(() => {
-    if (showTeamPicker) return;
-
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
       tl.from(leftColRef.current, { y: 20, autoAlpha: 0, duration: 0.5 })
@@ -417,7 +354,7 @@ export default function CheckInPage() {
     });
 
     return () => ctx.revert();
-  }, [showTeamPicker, teamStats.avg]);
+  }, [teamStats.avg]);
 
   useEffect(() => {
     const pct = Math.min(100, Math.max(0, (teamStats.avg / 5) * 100));
@@ -426,114 +363,6 @@ export default function CheckInPage() {
       gsap.fromTo(barRef.current, { scaleY: 0.96 }, { scaleY: 1, duration: 0.3, ease: "power1.out" });
     }
   }, [teamStats.avg]);
-
-  const handleTeamContinue = useCallback(async () => {
-    const fallbackTeamId = pickerSelected ?? teams[0]?.id ?? null;
-    if (!fallbackTeamId) {
-      setError("Please select or create a team to continue.");
-      return;
-    }
-
-    setIsPageLoading(true);
-    try {
-      const data = await fetchDashboardData(fallbackTeamId);
-      if (data.unauthorized) {
-        setError("Your session expired. Please sign in again.");
-        setTeams([]);
-        setMyHistory([]);
-        setTeamStats({ avg: 0, total: 0, updated: "—" });
-        setSelectedTeamId(null);
-        setPickerSelected(null);
-        setShowTeamPicker(true);
-        setIsPageLoading(false);
-        return;
-      }
-
-      setTeams(sortTeams(data.teams ?? []));
-      setMyHistory(data.history ?? []);
-      setTeamStats(mapTeamStats(data.stats));
-      setTeamFeed(data.teamFeed ?? []);
-      setSelectedTeamId(fallbackTeamId);
-      setPickerSelected(fallbackTeamId);
-      setShowTeamPicker(false);
-      setError(null);
-      try {
-        if (typeof window !== "undefined") {
-          localStorage.setItem(TEAM_STORAGE_KEY, fallbackTeamId);
-        }
-      } catch {}
-    } catch (err) {
-      console.error(err);
-      setError("Failed to load team details. Please try again.");
-    } finally {
-      setIsPageLoading(false);
-    }
-  }, [fetchDashboardData, pickerSelected, teams]);
-
-  const handleCreateTeam = useCallback(async () => {
-    const trimmedName = newTeamName.trim();
-    if (!trimmedName) return;
-
-    setIsCreatingTeam(true);
-    try {
-      const response = await fetch("/api/checkins/teams", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmedName }),
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error ?? "Failed to create team");
-      }
-
-      const payload = await response.json();
-
-      if (payload?.error === "Unauthorized") {
-        setError("Your session expired. Please sign in again.");
-        return;
-      }
-      const team = payload.team as TeamOption;
-
-      const updatedTeams = sortTeams([...teams.filter((item) => item.id !== team.id), team]);
-      setTeams(updatedTeams);
-      setSelectedTeamId(team.id);
-      setPickerSelected(team.id);
-      setShowTeamPicker(false);
-      setAddingNew(false);
-      setNewTeamName("");
-      setError(null);
-
-      try {
-        if (typeof window !== "undefined") {
-          localStorage.setItem(TEAM_STORAGE_KEY, team.id);
-        }
-      } catch {}
-
-      setIsPageLoading(true);
-      const data = await fetchDashboardData(team.id);
-      if (data.unauthorized) {
-        setError("Your session expired. Please sign in again.");
-        setTeams([]);
-        setMyHistory([]);
-        setTeamStats({ avg: 0, total: 0, updated: "—" });
-        setSelectedTeamId(null);
-        setPickerSelected(null);
-        setShowTeamPicker(true);
-        return;
-      }
-      setTeams(sortTeams(data.teams ?? []));
-      setMyHistory(data.history ?? []);
-      setTeamStats(mapTeamStats(data.stats));
-      setTeamFeed(data.teamFeed ?? []);
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : "Failed to create team");
-    } finally {
-      setIsCreatingTeam(false);
-      setIsPageLoading(false);
-    }
-  }, [fetchDashboardData, newTeamName, teams]);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -555,6 +384,7 @@ export default function CheckInPage() {
             mood: selectedMood,
             note: comment,
             teamId: selectedTeamId,
+            organizationId: selectedOrganizationId,
           }),
         });
 
@@ -584,7 +414,7 @@ export default function CheckInPage() {
         setIsSubmitting(false);
       }
     },
-    [comment, selectedMood, selectedTeamId],
+    [comment, selectedMood, selectedOrganizationId, selectedTeamId],
   );
 
   const resetForm = useCallback(() => {
@@ -666,102 +496,28 @@ export default function CheckInPage() {
   const activeComments = historyModal.checkinId ? commentsByCheckinId[historyModal.checkinId] ?? [] : [];
   const commentsLoading = historyModal.checkinId ? loadingComments[historyModal.checkinId] ?? false : false;
 
-  const showFullScreenLoader = !initialized || (isPageLoading && !showTeamPicker);
+  const showFullScreenLoader = !teamPreferencesReady
+    || !selection.organizationId
+    || !selection.teamId
+    || !initialized
+    || isPageLoading;
 
   if (showFullScreenLoader) {
     return (
-      <AuthGuard>
-        <FullscreenLoader
-          message={!initialized ? "Preparing your check-in dashboard…" : "Loading your check-in dashboard…"}
-        />
-      </AuthGuard>
+      <FullscreenLoader
+        message={!initialized ? "Preparing your check-in dashboard…" : "Loading your check-in dashboard…"}
+      />
     );
   }
 
   return (
-    <AuthGuard>
-      {showTeamPicker ? (
-        <div className="min-h-screen bg-background flex items-center justify-center px-6">
-          <div className="relative w-full max-w-lg rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/90 to-white/70 p-8 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/40 text-center dark:from-[#1a1a2e]/90 dark:to-[#232136]/70">
-            <h1 className="text-2xl md:text-3xl font-semibold text-foreground">Choose your team to start</h1>
-            <p className="mt-2 text-sm text-foreground/70">We’ll remember your choice on this device.</p>
+    <>
+      <div className="min-h-screen bg-background">
+        <main className="mx-auto max-w-8xl px-6 py-8" ref={cardsRef}>
+          {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
 
-            {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
-
-            <div className="mt-6 space-y-4 text-left">
-              <label htmlFor="team-picker" className="text-sm font-medium text-foreground/90">
-                Select your team
-              </label>
-              <SelectDropdown
-                value={pickerSelected}
-                options={teamOptions}
-                onChange={(value) => {
-                  setPickerSelected(value);
-                  setAddingNew(false);
-                }}
-              />
-
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setAddingNew((state) => !state)}
-                  className="text-sm font-semibold text-foreground hover:text-[#fb7185]"
-                >
-                  {addingNew ? "Cancel" : "➕ Add a new team"}
-                </button>
-                <button
-                  type="button"
-                  disabled={addingNew || isPageLoading}
-                  onClick={handleTeamContinue}
-                  className={`rounded-full bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] px-4 py-2 text-sm font-semibold text-white transition ${
-                    addingNew || isPageLoading ? "cursor-not-allowed opacity-50" : "hover:opacity-95"
-                  }`}
-                >
-                  {isPageLoading ? "Loading…" : "Continue"}
-                </button>
-              </div>
-
-              {addingNew && (
-                <div className="mt-3 space-y-3">
-                  <label htmlFor="new-team" className="text-sm font-medium text-foreground/90">
-                    New team name
-                  </label>
-                  <input
-                    id="new-team"
-                    value={newTeamName}
-                    onChange={(event) => setNewTeamName(event.target.value)}
-                    placeholder="e.g. Platform Tribe"
-                    className="w-full rounded-xl border border-foreground/15 bg-background/80 px-3 py-2 text-foreground placeholder:text-foreground/40 focus:border-transparent focus:ring-2 focus:ring-[#fb7185] dark:bg-foreground/5"
-                  />
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      disabled={isCreatingTeam || !newTeamName.trim()}
-                      onClick={handleCreateTeam}
-                      className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                        !newTeamName.trim()
-                          ? "cursor-not-allowed bg-foreground/10 text-foreground/60"
-                          : "bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] text-white hover:opacity-95"
-                      }`}
-                    >
-                      {isCreatingTeam ? "Saving…" : "Save & continue"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="mt-6 text-xs text-foreground/60">You can change teams anytime in the settings.</div>
-
-            {isPageLoading && <InlineLoader message="Loading your team dashboard…" />}
-          </div>
-        </div>
-      ) : (
-        <div className="min-h-screen bg-background">
-          <main className="mx-auto max-w-8xl px-6 py-8" ref={cardsRef}>
-            {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
-
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-[7fr_3fr]">
-              <div
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-[7fr_3fr]">
+            <div
                 ref={leftColRef}
                 className="flex h-[calc(100vh-4rem)] flex-col items-center justify-center space-y-6"
               >
@@ -803,8 +559,6 @@ export default function CheckInPage() {
             </div>
           </main>
         </div>
-      )}
-
       {historyModal.open && activeHistory && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm"
@@ -896,6 +650,14 @@ export default function CheckInPage() {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+export default function CheckInPage() {
+  return (
+    <AuthGuard>
+      <CheckInPageContent />
     </AuthGuard>
   );
 }

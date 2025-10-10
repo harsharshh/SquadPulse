@@ -3,7 +3,7 @@
 import type { HTMLAttributes } from "react";
 import MoodFace from "@/components/checkin/MoodFace";
 
-interface GratitudeBoardCardProps extends HTMLAttributes<HTMLDivElement> {
+interface GratitudeBoardCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onChange"> {
   entries: string[];
   newEntry: string;
   onChange: (value: string) => void;

@@ -1,25 +1,24 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
 
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth";
 import { createComment, listComments } from "@/lib/checkin-service";
 
 async function getSessionUserId() {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   return session?.user?.id ?? null;
 }
 
 export async function GET(
   _request: NextRequest,
-  context: { params: { checkinId: string } },
+  context: { params: Promise<{ checkinId: string }> },
 ) {
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { checkinId } = context.params;
+  const { checkinId } = await context.params;
 
   try {
     const comments = await listComments(checkinId);
@@ -32,14 +31,14 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  context: { params: { checkinId: string } },
+  context: { params: Promise<{ checkinId: string }> },
 ) {
   const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { checkinId } = context.params;
+  const { checkinId } = await context.params;
 
   try {
     const body = await request.json();

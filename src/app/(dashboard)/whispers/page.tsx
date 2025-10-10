@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { gsap } from "gsap";
 
 import AuthGuard from "@/components/AuthGuard";
@@ -13,102 +13,252 @@ import WhisperParticipantsCard, {
 import WhisperCard from "@/components/whispers/WhisperCard";
 import FullscreenPostModal from "@/components/whispers/FullscreenPostModal";
 import type { Whisper, Category } from "@/components/whispers/types";
+import { ORGANIZATION_STORAGE_KEY, TEAM_STORAGE_KEY } from "@/lib/constants";
 
-const sampleWhispers: Whisper[] = [
-  {
-    id: "1",
-    text: "Great code review today! Really helpful feedback.",
-    timestamp: new Date(Date.now() - 1000 * 60 * 5),
-    category: "praise",
-    likes: 8,
-    shares: 1,
-    comments: [
-      {
-        id: "c1",
-        author: "Anon-7",
-        text: "Agree! Super crisp points. 🙌",
-        timestamp: new Date(Date.now() - 1000 * 60 * 3),
-      },
-    ],
-    likedByMe: false,
-    mine: false,
-  },
-  {
-    id: "2",
-    text: "We're blocked on the API integration. Need help!",
-    timestamp: new Date(Date.now() - 1000 * 60 * 15),
-    category: "concern",
-    likes: 3,
-    shares: 0,
-    comments: [
-      {
-        id: "c2",
-        author: "Anon-2",
-        text: "DM me the error logs. I can take a look.",
-        timestamp: new Date(Date.now() - 1000 * 60 * 10),
-      },
-      {
-        id: "c3",
-        author: "Anon-4",
-        text: "Is this on staging or prod? 🤔",
-        timestamp: new Date(Date.now() - 1000 * 60 * 8),
-      },
-    ],
-    likedByMe: false,
-    mine: false,
-  },
-  {
-    id: "3",
-    text: "What if we added dark mode to the dashboard?",
-    timestamp: new Date(Date.now() - 1000 * 60 * 45),
-    category: "idea",
-    likes: 12,
-    shares: 2,
-    comments: [],
-    likedByMe: true,
-    mine: false,
-  },
-  {
-    id: "4",
-    text: "Coffee break anyone? ☕",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60),
-    category: "fun",
-    likes: 5,
-    shares: 0,
-    comments: [
-      {
-        id: "c4",
-        author: "Anon-9",
-        text: "Always. ☕+💻 = ❤️",
-        timestamp: new Date(Date.now() - 1000 * 60 * 55),
-      },
-    ],
-    likedByMe: false,
-    mine: false,
-  },
+type OrganizationOption = {
+  id: string;
+  name: string;
+};
+
+type TeamOption = {
+  id: string;
+  name: string;
+  organizationId: string;
+};
+
+type ApiComment = {
+  id: string;
+  author: string;
+  text: string;
+  timestamp: string;
+};
+
+type ApiWhisper = {
+  id: string;
+  text: string;
+  timestamp: string;
+  updatedAt: string;
+  category: Category;
+  likes: number;
+  shares: number;
+  comments: ApiComment[];
+  likedByMe: boolean;
+  mine: boolean;
+  author: string;
+};
+
+type ApiStats = {
+  totalPosts: number;
+  totalLikes: number;
+  totalComments: number;
+  totalShares: number;
+  categoryCounts: Record<Category, number>;
+};
+
+type ApiParticipant = {
+  id: string;
+  name: string;
+};
+
+type WallResponse = {
+  whispers: ApiWhisper[];
+  stats: ApiStats;
+  participants: ApiParticipant[];
+  organizations?: OrganizationOption[];
+  organizationId?: string;
+  teams?: TeamOption[];
+  teamId?: string | null;
+};
+
+const COLOR_CLASSES = [
+  "bg-orange-500",
+  "bg-pink-500",
+  "bg-indigo-500",
+  "bg-emerald-500",
+  "bg-amber-500",
+  "bg-sky-500",
+  "bg-purple-500",
+  "bg-rose-500",
+  "bg-lime-500",
+  "bg-teal-500",
 ];
 
-const sampleParticipants: WhisperParticipant[] = [
-  { id: "u1", name: "Harsh", role: "Engineering", colorClass: "bg-orange-500", status: "online" },
-  { id: "u2", name: "Priya", role: "Design", colorClass: "bg-pink-500", status: "busy" },
-  { id: "u3", name: "Aman", role: "Product", colorClass: "bg-indigo-500", status: "online" },
-  { id: "u4", name: "Neha", role: "Quality", colorClass: "bg-emerald-500", status: "away" },
-  { id: "u5", name: "Ravi", role: "Support", colorClass: "bg-blue-500", status: "online" },
-];
+const STATUS_OPTIONS: WhisperParticipant["status"][] = ["online", "busy", "away"];
+
+const DEFAULT_STATS: ApiStats = {
+  totalPosts: 0,
+  totalLikes: 0,
+  totalComments: 0,
+  totalShares: 0,
+  categoryCounts: {
+    general: 0,
+    praise: 0,
+    concern: 0,
+    idea: 0,
+    fun: 0,
+  },
+};
+
+const pickFromArray = <T,>(input: string, items: T[]): T => {
+  const hash = Array.from(input).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  return items[hash % items.length];
+};
+
+const mapApiComment = (comment: ApiComment) => ({
+  id: comment.id,
+  author: comment.author,
+  text: comment.text,
+  timestamp: new Date(comment.timestamp),
+});
+
+const mapApiWhisper = (post: ApiWhisper): Whisper => ({
+  id: post.id,
+  text: post.text,
+  timestamp: new Date(post.timestamp),
+  category: post.category,
+  likes: post.likes,
+  shares: post.shares,
+  comments: post.comments.map(mapApiComment),
+  likedByMe: post.likedByMe,
+  mine: post.mine,
+  author: post.author,
+});
+
+const decorateParticipants = (participants: ApiParticipant[]): WhisperParticipant[] =>
+  participants.map((participant) => ({
+    id: participant.id,
+    name: participant.name,
+    colorClass: pickFromArray(participant.id, COLOR_CLASSES),
+    status: pickFromArray(participant.id, STATUS_OPTIONS),
+  }));
 
 export default function WhisperWallPage() {
-  const [whispers, setWhispers] = useState<Whisper[]>(sampleWhispers);
+  const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
+  const [, setTeams] = useState<TeamOption[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [pickerOrganizationId, setPickerOrganizationId] = useState<string | null>(null);
+  const [, setPickerTeamId] = useState<string | null>(null);
+
+  const [whispers, setWhispers] = useState<Whisper[]>([]);
+  const [stats, setStats] = useState<ApiStats>(DEFAULT_STATS);
+  const [participants, setParticipants] = useState<WhisperParticipant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [composerOpen, setComposerOpen] = useState(false);
   const [composeText, setComposeText] = useState("");
   const [composeCategory, setComposeCategory] = useState<Category>("general");
+  const [isSavingWhisper, setIsSavingWhisper] = useState(false);
   const [activePost, setActivePost] = useState<Whisper | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [filters, setFilters] = useState<Set<Category>>(new Set());
-
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [initialLoad, setInitialLoad] = useState(true);
+  const [deleteInProgress, setDeleteInProgress] = useState<string | null>(null);
 
-  const startEdit = (post: Whisper) => {
+  const fetchWhispersData = useCallback(async (options?: { organizationId?: string | null; teamId?: string | null }) => {
+    const params = new URLSearchParams();
+    if (options?.organizationId) params.set("organizationId", options.organizationId);
+    if (options?.teamId) params.set("teamId", options.teamId);
+    const query = params.size ? `?${params.toString()}` : "";
+
+    const response = await fetch(`/api/whispers${query}`, { cache: "no-store" });
+    if (!response.ok) {
+      if (response.status === 401) {
+        return { error: "Unauthorized" };
+      }
+      const message = await response.text();
+      throw new Error(message || "Failed to load whispers");
+    }
+
+    return (await response.json()) as WallResponse;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialData() {
+      setLoading(true);
+      try {
+        const savedOrgId = typeof window === "undefined" ? null : localStorage.getItem(ORGANIZATION_STORAGE_KEY);
+        const savedTeamId = typeof window === "undefined" ? null : localStorage.getItem(TEAM_STORAGE_KEY);
+
+        const data = await fetchWhispersData({ organizationId: savedOrgId, teamId: savedTeamId });
+        if (cancelled) return;
+
+        if ((data as { error?: string }).error === "Unauthorized") {
+          setError("Your session expired. Please sign in again.");
+          setOrganizations([]);
+          setTeams([]);
+          setWhispers([]);
+          setStats(DEFAULT_STATS);
+          setParticipants([]);
+          setSelectedOrganizationId(null);
+          setPickerOrganizationId(null);
+          setSelectedTeamId(null);
+          setPickerTeamId(null);
+          return;
+        }
+
+        const payload = data as WallResponse;
+        const normalizedOrganizations = payload.organizations ?? [];
+        setOrganizations(normalizedOrganizations);
+
+        const resolvedOrganizationId = (() => {
+          if (savedOrgId && normalizedOrganizations.some((org) => org.id === savedOrgId)) {
+            return savedOrgId;
+          }
+          if (payload.organizationId && normalizedOrganizations.some((org) => org.id === payload.organizationId)) {
+            return payload.organizationId;
+          }
+          return normalizedOrganizations[0]?.id ?? null;
+        })();
+
+        const normalizedTeams = payload.teams ?? [];
+        setTeams(normalizedTeams);
+
+        const resolvedTeamId = (() => {
+          if (savedTeamId && normalizedTeams.some((team) => team.id === savedTeamId)) {
+            return savedTeamId;
+          }
+          if (payload.teamId && normalizedTeams.some((team) => team.id === payload.teamId)) {
+            return payload.teamId;
+          }
+          return normalizedTeams[0]?.id ?? null;
+        })();
+
+        setSelectedOrganizationId(resolvedOrganizationId);
+        setPickerOrganizationId(resolvedOrganizationId);
+        setSelectedTeamId(resolvedTeamId);
+        setPickerTeamId(resolvedTeamId);
+
+        setWhispers(payload.whispers?.map(mapApiWhisper) ?? []);
+        setStats(payload.stats ?? DEFAULT_STATS);
+        setParticipants(decorateParticipants(payload.participants ?? []));
+        setError(null);
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          setError("Failed to load whispers. Please try again.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setInitialLoad(false);
+        }
+      }
+    }
+
+    loadInitialData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWhispersData]);
+
+  const startEdit = useCallback((post: Whisper) => {
     setComposeText(post.text);
     setComposeCategory(post.category);
     setComposerOpen(true);
@@ -119,7 +269,7 @@ export default function WhisperWallPage() {
         document.querySelector("#composer-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 0);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -143,23 +293,6 @@ export default function WhisperWallPage() {
         ease: "power2.out",
         delay: 0.1,
       });
-
-      const cards = gsap.utils.toArray<HTMLElement>(
-        '[data-anim="card"]:not([data-animated="1"])'
-      );
-      if (cards.length) {
-        gsap.set(cards, { opacity: 0, y: 12 });
-        gsap.to(cards, {
-          opacity: 1,
-          y: 0,
-          duration: 0.1,
-          ease: "power2.out",
-          stagger: 0.08,
-          onComplete: () => {
-            cards.forEach((el) => el.setAttribute("data-animated", "1"));
-          },
-        });
-      }
     });
 
     return () => ctx.revert();
@@ -170,27 +303,23 @@ export default function WhisperWallPage() {
     return whispers.filter((whisper) => filters.has(whisper.category));
   }, [whispers, filters]);
 
-  const stats = useMemo(() => {
-    const categoryCounts: Record<Category, number> = {
-      general: 0,
-      praise: 0,
-      concern: 0,
-      idea: 0,
-      fun: 0,
-    };
-    let totalLikes = 0;
-    let totalComments = 0;
-    let totalShares = 0;
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      const cards = gsap.utils.toArray<HTMLElement>('[data-anim="card"]');
+      if (cards.length) {
+        gsap.set(cards, { opacity: 0, y: 12 });
+        gsap.to(cards, {
+          opacity: 1,
+          y: 0,
+          duration: 0.18,
+          ease: "power2.out",
+          stagger: 0.05,
+        });
+      }
+    });
 
-    for (const whisper of whispers) {
-      categoryCounts[whisper.category] += 1;
-      totalLikes += whisper.likes;
-      totalComments += whisper.comments.length;
-      totalShares += whisper.shares;
-    }
-    const totalPosts = whispers.length || 1;
-    return { categoryCounts, totalLikes, totalComments, totalShares, totalPosts };
-  }, [whispers]);
+    return () => ctx.revert();
+  }, [visibleWhispers.length]);
 
   const pieData = useMemo(
     () => [
@@ -200,13 +329,7 @@ export default function WhisperWallPage() {
       { key: "idea" as const, value: stats.categoryCounts.idea, color: "#3b82f6", label: "Idea" },
       { key: "fun" as const, value: stats.categoryCounts.fun, color: "#f97316", label: "Fun" },
     ],
-    [
-      stats.categoryCounts.general,
-      stats.categoryCounts.praise,
-      stats.categoryCounts.concern,
-      stats.categoryCounts.idea,
-      stats.categoryCounts.fun,
-    ]
+    [stats.categoryCounts]
   );
 
   const legendItems = useMemo(
@@ -217,120 +340,266 @@ export default function WhisperWallPage() {
       { key: "idea" as const, color: "#3b82f6", label: "Idea", count: stats.categoryCounts.idea },
       { key: "fun" as const, color: "#f97316", label: "Fun", count: stats.categoryCounts.fun },
     ],
-    [
-      stats.categoryCounts.general,
-      stats.categoryCounts.praise,
-      stats.categoryCounts.concern,
-      stats.categoryCounts.idea,
-      stats.categoryCounts.fun,
-    ]
+    [stats.categoryCounts]
   );
 
-  const toggleLike = (postId: string) => {
-    setWhispers((prev) =>
-      prev.map((whisper) =>
-        whisper.id === postId
-          ? {
-              ...whisper,
-              likedByMe: !whisper.likedByMe,
-              likes: whisper.likedByMe ? Math.max(0, whisper.likes - 1) : whisper.likes + 1,
-            }
-          : whisper
-      )
-    );
-  };
+  const toggleLike = useCallback(
+    async (postId: string) => {
+      try {
+        const existing = whispers.find((item) => item.id === postId);
+        const response = await fetch(`/api/whispers/${postId}/like`, { method: "POST" });
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        const payload = (await response.json()) as { liked: boolean; likes: number };
 
-  const addComment = (postId: string, text: string) => {
-    const newComment = {
-      id: `${Date.now()}`,
-      author: `Anon-${Math.floor(1 + Math.random() * 99)}`,
-      text,
-      timestamp: new Date(),
-    };
+        setWhispers((prev) =>
+          prev.map((whisper) =>
+            whisper.id === postId
+              ? { ...whisper, likedByMe: payload.liked, likes: payload.likes }
+              : whisper
+          )
+        );
+        setActivePost((prev) =>
+          prev && prev.id === postId ? { ...prev, likedByMe: payload.liked, likes: payload.likes } : prev
+        );
+        setStats((prev) => ({
+          ...prev,
+          totalLikes: Math.max(0, prev.totalLikes + payload.likes - (existing?.likes ?? 0)),
+        }));
+      } catch (err) {
+        console.error(err);
+        setError("Failed to update like. Please try again.");
+      }
+    },
+    [whispers],
+  );
 
-    setWhispers((prev) =>
-      prev.map((whisper) =>
-        whisper.id === postId
-          ? { ...whisper, comments: [...whisper.comments, newComment] }
-          : whisper
-      )
-    );
+  const addComment = useCallback(
+    async (postId: string, text: string) => {
+      try {
+        const response = await fetch(`/api/whispers/${postId}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: text }),
+        });
 
-    setActivePost((prev) =>
-      prev && prev.id === postId ? { ...prev, comments: [...prev.comments, newComment] } : prev
-    );
-  };
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error ?? "Failed to add comment");
+        }
 
-  const incrementShare = (postId: string) => {
-    setWhispers((prev) =>
-      prev.map((whisper) =>
-        whisper.id === postId ? { ...whisper, shares: whisper.shares + 1 } : whisper
-      )
-    );
-  };
+        const payload = (await response.json()) as { comment: ApiComment };
+        const comment = mapApiComment(payload.comment);
 
-  const submitWhisper = () => {
-    if (!composeText.trim()) return;
+        setWhispers((prev) =>
+          prev.map((whisper) =>
+            whisper.id === postId
+              ? { ...whisper, comments: [...whisper.comments, comment] }
+              : whisper
+          )
+        );
 
-    if (editingId) {
-      setWhispers((prev) =>
-        prev.map((whisper) =>
-          whisper.id === editingId
-            ? {
-                ...whisper,
-                text: composeText.trim(),
-                category: composeCategory,
-                timestamp: new Date(),
-              }
-            : whisper
-        )
-      );
-      setEditingId(null);
-    } else {
-      const newPost: Whisper = {
-        id: `${Date.now()}`,
-        text: composeText.trim(),
-        timestamp: new Date(),
-        category: composeCategory,
-        likes: 0,
-        shares: 0,
-        comments: [],
-        likedByMe: false,
-        mine: true,
-      };
-      setWhispers((prev) => [newPost, ...prev]);
+        setActivePost((prev) =>
+          prev && prev.id === postId ? { ...prev, comments: [...prev.comments, comment] } : prev
+        );
+
+        setStats((prev) => ({ ...prev, totalComments: prev.totalComments + 1 }));
+      } catch (err) {
+        console.error(err);
+        setError(err instanceof Error ? err.message : "Failed to add comment");
+      }
+    },
+    [],
+  );
+
+  const incrementShare = useCallback(
+    async (postId: string) => {
+      try {
+        const existing = whispers.find((item) => item.id === postId);
+        const response = await fetch(`/api/whispers/${postId}/share`, { method: "POST" });
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        const payload = (await response.json()) as { shares: number };
+
+        setWhispers((prev) =>
+          prev.map((whisper) =>
+            whisper.id === postId ? { ...whisper, shares: payload.shares } : whisper
+          )
+        );
+        setActivePost((prev) =>
+          prev && prev.id === postId ? { ...prev, shares: payload.shares } : prev
+        );
+        setStats((prev) => ({
+          ...prev,
+          totalShares: Math.max(0, prev.totalShares + payload.shares - (existing?.shares ?? 0)),
+        }));
+      } catch (err) {
+        console.error(err);
+        setError("Failed to share whisper. Please try again.");
+      }
+    },
+    [whispers],
+  );
+
+  const submitWhisper = useCallback(async () => {
+    const trimmed = composeText.trim();
+    if (!trimmed) return;
+
+    const organizationId = selectedOrganizationId ?? pickerOrganizationId ?? organizations[0]?.id;
+    if (!organizationId) {
+      setError("Select an organization before posting a whisper.");
+      return;
     }
 
-    setComposeText("");
-    setComposeCategory("general");
-    setComposerOpen(false);
-  };
+    setIsSavingWhisper(true);
+    try {
+      if (editingId) {
+        const existing = whispers.find((item) => item.id === editingId);
+        const response = await fetch(`/api/whispers/${editingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: trimmed, category: composeCategory, organizationId }),
+        });
 
-  const clearComposer = () => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error ?? "Failed to update whisper");
+        }
+
+        const payload = await response.json();
+        const updated = mapApiWhisper(payload.whisper as ApiWhisper);
+
+        setWhispers((prev) =>
+          prev.map((whisper) =>
+            whisper.id === updated.id
+              ? { ...whisper, text: updated.text, category: updated.category, timestamp: updated.timestamp }
+              : whisper
+          )
+        );
+        setActivePost((prev) =>
+          prev && prev.id === updated.id
+            ? { ...prev, text: updated.text, category: updated.category, timestamp: updated.timestamp }
+            : prev
+        );
+
+        if (existing && existing.category !== updated.category) {
+          setStats((prev) => ({
+            ...prev,
+            categoryCounts: {
+              ...prev.categoryCounts,
+              [existing.category]: Math.max(0, prev.categoryCounts[existing.category] - 1),
+              [updated.category]: prev.categoryCounts[updated.category] + 1,
+            },
+          }));
+        }
+      } else {
+        const response = await fetch(`/api/whispers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: trimmed,
+            category: composeCategory,
+            organizationId,
+            teamId: selectedTeamId,
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error ?? "Failed to create whisper");
+        }
+
+        const payload = await response.json();
+        const created = mapApiWhisper(payload.whisper as ApiWhisper);
+        setWhispers((prev) => [created, ...prev]);
+        setStats((prev) => ({
+          ...prev,
+          totalPosts: prev.totalPosts + 1,
+          categoryCounts: {
+            ...prev.categoryCounts,
+            [created.category]: prev.categoryCounts[created.category] + 1,
+          },
+        }));
+      }
+
+      setComposeText("");
+      setComposeCategory("general");
+      setComposerOpen(false);
+      setEditingId(null);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to save whisper");
+    } finally {
+      setIsSavingWhisper(false);
+    }
+  }, [composeCategory, composeText, editingId, organizations, pickerOrganizationId, selectedOrganizationId, selectedTeamId, whispers]);
+
+  const clearComposer = useCallback(() => {
     setComposeText("");
     setComposeCategory("general");
     setEditingId(null);
-  };
+  }, []);
 
-  const deletePost = (id: string) => {
-    setWhispers((prev) => prev.filter((whisper) => whisper.id !== id));
+  const deletePost = useCallback(
+    async (id: string) => {
+      if (typeof window !== "undefined") {
+        const confirmed = window.confirm("Delete this whisper? This can’t be undone.");
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      setDeleteInProgress(id);
+      try {
+        const target = whispers.find((item) => item.id === id);
+        const response = await fetch(`/api/whispers/${id}`, { method: "DELETE" });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error ?? "Failed to delete whisper");
+        }
+
+        setMenuOpenId(null);
+        setWhispers((prev) => prev.filter((whisper) => whisper.id !== id));
+        setActivePost((prev) => (prev && prev.id === id ? null : prev));
+
+        if (target) {
+          setStats((prev) => ({
+            totalPosts: Math.max(0, prev.totalPosts - 1),
+            totalLikes: Math.max(0, prev.totalLikes - target.likes),
+            totalComments: Math.max(0, prev.totalComments - target.comments.length),
+            totalShares: Math.max(0, prev.totalShares - target.shares),
+            categoryCounts: {
+              ...prev.categoryCounts,
+              [target.category]: Math.max(0, prev.categoryCounts[target.category] - 1),
+            },
+          }));
+        }
+      } catch (err) {
+        console.error(err);
+        setError(err instanceof Error ? err.message : "Failed to delete whisper");
+      } finally {
+        setDeleteInProgress(null);
+      }
+    },
+    [whispers],
+  );
+
+  const reportPost = useCallback((id: string) => {
+    console.info("Reported post", id);
     setMenuOpenId(null);
-  };
+  }, []);
 
-  const reportPost = (id: string) => {
-    console.log("Reported post:", id);
-    setMenuOpenId(null);
-  };
-
-  const openModalWithPost = (post: Whisper) => {
+  const openModalWithPost = useCallback((post: Whisper) => {
     setActivePost(post);
     setModalOpen(true);
-  };
+  }, []);
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setModalOpen(false);
     setActivePost(null);
-  };
+  }, []);
 
   return (
     <AuthGuard>
@@ -339,6 +608,11 @@ export default function WhisperWallPage() {
           <div className="grid h-full min-h-0 gap-6 lg:grid-cols-[70%_30%]">
             <div className="flex h-full min-h-0 flex-col">
               <div className="shrink-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 pb-3 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+                {error && (
+                  <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
+                    {error}
+                  </div>
+                )}
                 <WhisperComposerCard
                   isOpen={composerOpen}
                   onToggle={() => setComposerOpen((prev) => !prev)}
@@ -348,30 +622,35 @@ export default function WhisperWallPage() {
                   onSelectCategory={setComposeCategory}
                   onClear={clearComposer}
                   onSubmit={submitWhisper}
-                  canSubmit={Boolean(composeText.trim())}
+                  canSubmit={Boolean(composeText.trim()) && !isSavingWhisper}
                   isEditing={Boolean(editingId)}
                 />
               </div>
 
               <section className="flex flex-1 flex-col gap-4 overflow-y-auto no-scrollbar py-4 pr-2">
-                {visibleWhispers.map((post) => (
-                  <WhisperCard
-                    key={post.id}
-                    post={post}
-                    isMenuOpen={menuOpenId === post.id}
-                    onToggleMenu={(id) =>
-                      setMenuOpenId((current) => (current === id ? null : id))
-                    }
-                    onEdit={startEdit}
-                    onDelete={deletePost}
-                    onReport={reportPost}
-                    onLike={toggleLike}
-                    onComment={openModalWithPost}
-                    onShare={incrementShare}
-                  />
-                ))}
-
-                {visibleWhispers.length === 0 && (
+                {loading && initialLoad ? (
+                  <div className="flex flex-1 items-center justify-center py-16 text-sm text-neutral-500">
+                    Loading whispers…
+                  </div>
+                ) : visibleWhispers.length ? (
+                  visibleWhispers.map((post) => (
+                    <WhisperCard
+                      key={post.id}
+                      post={post}
+                      isMenuOpen={menuOpenId === post.id}
+                      onToggleMenu={(id) =>
+                        setMenuOpenId((current) => (current === id ? null : id))
+                      }
+                      onEdit={startEdit}
+                      onDelete={deletePost}
+                      onReport={reportPost}
+                      onLike={toggleLike}
+                      onComment={openModalWithPost}
+                      onShare={incrementShare}
+                      deleting={deleteInProgress === post.id}
+                    />
+                  ))
+                ) : (
                   <div className="text-center py-12">
                     <div className="text-6xl mb-4">💭</div>
                     <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
@@ -406,7 +685,7 @@ export default function WhisperWallPage() {
                   legendItems={legendItems}
                 />
 
-                <WhisperParticipantsCard participants={sampleParticipants} />
+                <WhisperParticipantsCard participants={participants} />
               </div>
             </aside>
           </div>
