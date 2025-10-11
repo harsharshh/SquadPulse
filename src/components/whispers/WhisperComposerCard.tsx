@@ -3,6 +3,7 @@
 import type { Category } from "./types";
 import { categoryLabels } from "./constants";
 import { CategoryIcon } from "@/components/icons/WhisperCategoryIcons";
+import type { ReactNode } from "react";
 
 interface WhisperComposerCardProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface WhisperComposerCardProps {
   onSubmit: () => void;
   canSubmit: boolean;
   isEditing: boolean;
+  rightAccessory?: ReactNode;
 }
 
 const WhisperComposerCard = ({
@@ -28,6 +30,7 @@ const WhisperComposerCard = ({
   onSubmit,
   canSubmit,
   isEditing,
+  rightAccessory,
 }: WhisperComposerCardProps) => {
   return (
     <section>
@@ -37,16 +40,19 @@ const WhisperComposerCard = ({
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#f97316] via-[#fb7185] to-[#c084fc]" />
             <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">What&apos;s on your mind today?</span>
           </div>
-          <button
-            onClick={onToggle}
-            className={`text-sm px-3 py-1.5 rounded-lg font-semibold shadow-sm transition ${
-              isOpen
-                ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                : "bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] text-white hover:opacity-95"
-            }`}
-          >
-            {isOpen ? "Hide" : "Add Whisper"}
-          </button>
+          <div className="flex items-center gap-2">
+            {rightAccessory}
+            <button
+              onClick={onToggle}
+              className={`text-sm px-3 py-1.5 rounded-lg font-semibold shadow-sm transition ${
+                isOpen
+                  ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                  : "bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#c084fc] text-white hover:opacity-95"
+              }`}
+            >
+              {isOpen ? "Hide" : "Add Whisper"}
+            </button>
+          </div>
         </div>
         {isOpen && (
           <div className="px-4 sm:px-6 py-4">

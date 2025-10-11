@@ -87,9 +87,11 @@ type PreferencesCache = {
   selection: TeamSelection;
   organizations: OrganizationOption[];
   teams: TeamOption[];
+  timestamp: number;
 };
 
 let preferencesCache: PreferencesCache | null = null;
+const PREFERENCES_CACHE_TTL_MS = 60_000;
 
 export default function TeamPreferencesProvider({ children }: ProviderProps) {
   const [ready, setReady] = useState(false);
@@ -126,7 +128,7 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
 
   const bootstrap = useCallback(async () => {
     setLoading(true);
-    if (preferencesCache) {
+    if (preferencesCache && Date.now() - preferencesCache.timestamp < PREFERENCES_CACHE_TTL_MS) {
       const cached = preferencesCache;
       setOrganizations(cached.organizations);
       setTeams(cached.teams);
@@ -159,6 +161,7 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
           selection: { organizationId: persistedOrgId, teamId: persistedTeamId },
           organizations: orgs,
           teams: teamsForOrg,
+          timestamp: Date.now(),
         };
       } else {
         const defaultOrg = persistedOrgId ?? orgs[0]?.id ?? null;
@@ -170,6 +173,7 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
           selection: { organizationId: null, teamId: null },
           organizations: orgs,
           teams: teamsForOrg,
+          timestamp: Date.now(),
         };
       }
       setError(null);
@@ -224,6 +228,7 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
           selection: { organizationId: persistedOrgId, teamId: persistedTeamId },
           organizations: orgs,
           teams: teamsForOrg,
+          timestamp: Date.now(),
         };
       } else {
         setSelection({ organizationId: null, teamId: null });
@@ -233,6 +238,7 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
           selection: { organizationId: null, teamId: null },
           organizations: orgs,
           teams: teamsForOrg,
+          timestamp: Date.now(),
         };
       }
     } catch (err) {
@@ -293,6 +299,7 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
         selection: { organizationId, teamId },
         organizations,
         teams,
+        timestamp: Date.now(),
       };
       window.dispatchEvent(new CustomEvent("user-preferences-updated", {
         detail: { organizationId, teamId },
@@ -354,24 +361,25 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
         throw new Error("Team creation response missing data");
       }
 
-      const normalizedTeam: TeamOption = {
-        id: team.id,
-        name: team.name,
-        organizationId: team.organizationId ?? formOrgId,
-      };
+    const normalizedTeam: TeamOption = {
+      id: team.id,
+      name: team.name,
+      organizationId: team.organizationId ?? formOrgId,
+    };
 
-      const updatedTeams = sortTeams([...teams.filter((item) => item.id !== normalizedTeam.id), normalizedTeam]);
-      setTeams(updatedTeams);
-      setFormSelection({ organizationId: formOrgId, teamId: normalizedTeam.id });
-      setAddingNew(false);
-      setNewTeamName("");
+    const updatedTeams = sortTeams([...teams.filter((item) => item.id !== normalizedTeam.id), normalizedTeam]);
+    setTeams(updatedTeams);
+    setFormSelection({ organizationId: formOrgId, teamId: normalizedTeam.id });
+    setAddingNew(false);
+    setNewTeamName("");
 
-      await persistSelection(formOrgId, normalizedTeam.id);
-      preferencesCache = {
-        selection: { organizationId: formOrgId, teamId: normalizedTeam.id },
-        organizations,
-        teams: updatedTeams,
-      };
+    await persistSelection(formOrgId, normalizedTeam.id);
+    preferencesCache = {
+      selection: { organizationId: formOrgId, teamId: normalizedTeam.id },
+      organizations,
+      teams: updatedTeams,
+      timestamp: Date.now(),
+    };
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Failed to create team");

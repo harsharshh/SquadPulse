@@ -134,11 +134,11 @@ const decorateParticipants = (participants: ApiParticipant[]): WhisperParticipan
 
 export default function WhisperWallPage() {
   const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
-  const [, setTeams] = useState<TeamOption[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [pickerOrganizationId, setPickerOrganizationId] = useState<string | null>(null);
-  const [, setPickerTeamId] = useState<string | null>(null);
+  const [pickerTeamId, setPickerTeamId] = useState<string | null>(null);
 
   const [whispers, setWhispers] = useState<Whisper[]>([]);
   const [stats, setStats] = useState<ApiStats>(DEFAULT_STATS);
@@ -631,6 +631,37 @@ export default function WhisperWallPage() {
     setEditingId(null);
   }, []);
 
+  const refreshWhispers = useCallback(async () => {
+    const organizationId = selectedOrganizationId ?? pickerOrganizationId ?? organizations[0]?.id ?? null;
+    const teamId = selectedTeamId ?? pickerTeamId ?? teams[0]?.id ?? null;
+
+    if (!organizationId) {
+      setError("Select an organization to refresh the wall.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await fetchWhispersData({ organizationId, teamId });
+      if ((data as { error?: string }).error === "Unauthorized") {
+        setError("Your session expired. Please sign in again.");
+        return;
+      }
+      const payload = data as WallResponse;
+      setOrganizations(payload.organizations ?? []);
+      setTeams(payload.teams ?? []);
+      setWhispers(payload.whispers?.map(mapApiWhisper) ?? []);
+      setStats(payload.stats ?? DEFAULT_STATS);
+      setParticipants(decorateParticipants(payload.participants ?? []));
+      setError(null);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to refresh whispers. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWhispersData, organizations, pickerOrganizationId, pickerTeamId, selectedOrganizationId, selectedTeamId, teams]);
+
   const deletePost = useCallback((id: string) => {
     setDeleteConfirm({ open: true, postId: id });
   }, []);
@@ -711,6 +742,34 @@ export default function WhisperWallPage() {
                   onSubmit={submitWhisper}
                   canSubmit={Boolean(composeText.trim()) && !isSavingWhisper}
                   isEditing={Boolean(editingId)}
+                  rightAccessory={(
+                    <button
+                      type="button"
+                      onClick={refreshWhispers}
+                      disabled={loading}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-foreground/15 text-foreground transition hover:bg-foreground/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Refresh whispers"
+                    >
+                      {loading ? (
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-foreground/20 border-t-[#fb7185]" />
+                      ) : (
+                        <svg
+                          className="h-4 w-4"
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M4.5 7.5a5.5 5.5 0 0 1 9-2.2L15 3m0 0v4h-4M15.5 12.5a5.5 5.5 0 0 1-9 2.2L5 17m0 0v-4h4"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                  )}
                 />
               </div>
 
