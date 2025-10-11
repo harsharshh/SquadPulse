@@ -11,10 +11,12 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
     "gsap": "^3.13.0",
+    "chart.js": "^4.4.4",
     "next": "15.5.4",
     "next-auth": "^4.24.11",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "react-chartjs-2": "^5.2.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

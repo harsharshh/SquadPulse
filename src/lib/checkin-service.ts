@@ -76,6 +76,45 @@ export type TeamStats = {
   lastCheckinAt: string | null;
 };
 
+type TeamDashboardStats = {
+  averageMood: number;
+  totalCheckins7d: number;
+  activeMembers7d: number;
+  totalMembers: number;
+  lastCheckinAt: string | null;
+};
+
+type TeamWeeklyPoint = {
+  date: string;
+  label: string;
+  checkins: number;
+  avgMood: number;
+};
+
+type TeamMoodDistribution = {
+  mood: number;
+  count: number;
+};
+
+export type TeamRecentCheckin = {
+  id: string;
+  mood: number;
+  note: string | null;
+  createdAt: string;
+  anonymousUsername: string | null;
+};
+
+export type TeamDashboardData = {
+  teamId: string;
+  teamName: string;
+  organizationId: string;
+  organizationName: string;
+  stats: TeamDashboardStats;
+  weekly: TeamWeeklyPoint[];
+  moodDistribution: TeamMoodDistribution[];
+  recentCheckins: TeamRecentCheckin[];
+};
+
 export type Comment = {
   id: string;
   content: string;
@@ -434,6 +473,127 @@ export async function listTeamFeed(
     createdAt: row.created_at,
     anonymousUsername: row.anonymous_username,
   }));
+}
+
+export async function getTeamDashboardData(teamId: string): Promise<TeamDashboardData> {
+  const sql = getDbClient();
+  const query = createQuery(sql);
+  await ensureSchema(sql);
+
+  const [teamRow] = await query<Array<{ id: string; name: string; organization_id: string; organization_name: string | null }>>`
+    SELECT t.id, t.name, t.organization_id, o.name AS organization_name
+    FROM teams t
+    LEFT JOIN organizations o ON o.id = t.organization_id
+    WHERE t.id = ${teamId}
+    LIMIT 1
+  `;
+
+  if (!teamRow) {
+    throw new Error("Team not found");
+  }
+
+  const [statsRow] = await query<Array<{
+    avg_mood: string | null;
+    checkins_7d: string | null;
+    active_members_7d: string | null;
+    total_members: string | null;
+    last_checkin_at: string | null;
+  }>>`
+    SELECT
+      AVG(mood)::numeric(10, 2)::text AS avg_mood,
+      COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::text AS checkins_7d,
+      COUNT(DISTINCT CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN provider_account_id END)::text AS active_members_7d,
+      COUNT(DISTINCT provider_account_id)::text AS total_members,
+      MAX(created_at) AS last_checkin_at
+    FROM checkins
+    WHERE team_id = ${teamId}
+  `;
+
+  const weeklyRows = await query<Array<{ day: string; checkins: string; avg_mood: string | null }>>`
+    SELECT
+      DATE(created_at) AS day,
+      COUNT(*)::text AS checkins,
+      AVG(mood)::numeric(10, 2)::text AS avg_mood
+    FROM checkins
+    WHERE team_id = ${teamId}
+      AND created_at >= (CURRENT_DATE - INTERVAL '6 days')
+    GROUP BY day
+    ORDER BY day
+  `;
+
+  const moodRows = await query<Array<{ mood: number; count: string }>>`
+    SELECT
+      mood,
+      COUNT(*)::text AS count
+    FROM checkins
+    WHERE team_id = ${teamId}
+      AND created_at >= NOW() - INTERVAL '30 days'
+    GROUP BY mood
+  `;
+
+  const recentRows = await query<
+    Array<{ id: string; mood: number; note: string | null; created_at: string; anonymous_username: string | null }>
+  >`
+    SELECT
+      c.id,
+      c.mood,
+      c.note,
+      c.created_at,
+      u.anonymous_username
+    FROM checkins c
+    LEFT JOIN users u ON u.provider_account_id = c.provider_account_id
+    WHERE c.team_id = ${teamId}
+    ORDER BY c.created_at DESC
+    LIMIT 10
+  `;
+
+  const now = new Date();
+  const weekly: TeamWeeklyPoint[] = [];
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    date.setUTCDate(date.getUTCDate() - offset);
+    const iso = date.toISOString().slice(0, 10);
+    const match = weeklyRows.find((row) => row.day === iso);
+
+    weekly.push({
+      date: iso,
+      label: date.toLocaleDateString(undefined, { weekday: "short" }),
+      checkins: match ? Number(match.checkins ?? 0) : 0,
+      avgMood: match && match.avg_mood ? Number(match.avg_mood) : 0,
+    });
+  }
+
+  const moodDistribution: TeamMoodDistribution[] = [1, 2, 3, 4, 5].map((mood) => {
+    const row = moodRows.find((item) => item.mood === mood);
+    return { mood, count: row ? Number(row.count ?? 0) : 0 };
+  });
+
+  const stats: TeamDashboardStats = {
+    averageMood: statsRow?.avg_mood ? Number(statsRow.avg_mood) : 0,
+    totalCheckins7d: statsRow?.checkins_7d ? Number(statsRow.checkins_7d) : 0,
+    activeMembers7d: statsRow?.active_members_7d ? Number(statsRow.active_members_7d) : 0,
+    totalMembers: statsRow?.total_members ? Number(statsRow.total_members) : 0,
+    lastCheckinAt: statsRow?.last_checkin_at ?? null,
+  };
+
+  const recentCheckins: TeamRecentCheckin[] = recentRows.map((row) => ({
+    id: row.id,
+    mood: row.mood,
+    note: row.note,
+    createdAt: row.created_at,
+    anonymousUsername: row.anonymous_username,
+  }));
+
+  return {
+    teamId: teamRow.id,
+    teamName: teamRow.name,
+    organizationId: teamRow.organization_id,
+    organizationName: teamRow.organization_name ?? "",
+    stats,
+    weekly,
+    moodDistribution,
+    recentCheckins,
+  } satisfies TeamDashboardData;
 }
 
 export async function createComment(params: CreateCommentParams): Promise<Comment> {

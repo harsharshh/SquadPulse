@@ -15,10 +15,11 @@ interface MoodOverviewCardProps extends HTMLAttributes<HTMLDivElement> {
   moodColor: string;
   stats: TeamStats;
   progressRef?: RefObject<HTMLDivElement | null>;
+  title?: string;
 }
 
 const MoodOverviewCard = forwardRef<HTMLDivElement, MoodOverviewCardProps>(
-  ({ mood, moodColor, stats, progressRef, className = "", ...rest }, ref) => {
+  ({ mood, moodColor, stats, progressRef, title = "Your mood overview", className = "", ...rest }, ref) => {
     return (
       <div
         ref={ref}
@@ -29,7 +30,7 @@ const MoodOverviewCard = forwardRef<HTMLDivElement, MoodOverviewCardProps>(
         <div className="mb-3 flex items-center gap-3">
           <MoodFace mood={mood} activeColor={moodColor} size={48} />
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Your mood overview</h3>
+            <h3 className="text-lg font-semibold text-foreground">{title}</h3>
           </div>
         </div>
 
