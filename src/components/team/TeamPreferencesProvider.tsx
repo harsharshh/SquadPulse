@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -82,6 +83,14 @@ type ProviderProps = {
   children: ReactNode;
 };
 
+type PreferencesCache = {
+  selection: TeamSelection;
+  organizations: OrganizationOption[];
+  teams: TeamOption[];
+};
+
+let preferencesCache: PreferencesCache | null = null;
+
 export default function TeamPreferencesProvider({ children }: ProviderProps) {
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -117,6 +126,17 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
 
   const bootstrap = useCallback(async () => {
     setLoading(true);
+    if (preferencesCache) {
+      const cached = preferencesCache;
+      setOrganizations(cached.organizations);
+      setTeams(cached.teams);
+      setSelection(cached.selection);
+      setFormSelection(cached.selection);
+      setIsModalOpen(!(cached.selection.organizationId && cached.selection.teamId));
+      setReady(true);
+      setLoading(false);
+      return;
+    }
     try {
       const data = await fetchPreferences();
       const orgs = data.organizations ?? [];
@@ -135,12 +155,22 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
         setFormSelection({ organizationId: persistedOrgId, teamId: persistedTeamId });
         updateLocalStorage(persistedOrgId, persistedTeamId);
         setIsModalOpen(false);
+        preferencesCache = {
+          selection: { organizationId: persistedOrgId, teamId: persistedTeamId },
+          organizations: orgs,
+          teams: teamsForOrg,
+        };
       } else {
         const defaultOrg = persistedOrgId ?? orgs[0]?.id ?? null;
         const defaultTeam = null;
         setSelection({ organizationId: null, teamId: null });
         setFormSelection({ organizationId: defaultOrg, teamId: defaultTeam });
         setIsModalOpen(true);
+        preferencesCache = {
+          selection: { organizationId: null, teamId: null },
+          organizations: orgs,
+          teams: teamsForOrg,
+        };
       }
       setError(null);
     } catch (err) {
@@ -153,7 +183,13 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
     }
   }, [updateLocalStorage]);
 
+  const hasBootstrapped = useRef(false);
+
   useEffect(() => {
+    if (hasBootstrapped.current) {
+      return;
+    }
+    hasBootstrapped.current = true;
     bootstrap();
   }, [bootstrap]);
 
@@ -184,10 +220,20 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
         setFormSelection({ organizationId: persistedOrgId, teamId: persistedTeamId });
         updateLocalStorage(persistedOrgId, persistedTeamId);
         setIsModalOpen(false);
+        preferencesCache = {
+          selection: { organizationId: persistedOrgId, teamId: persistedTeamId },
+          organizations: orgs,
+          teams: teamsForOrg,
+        };
       } else {
         setSelection({ organizationId: null, teamId: null });
         setFormSelection({ organizationId: persistedOrgId ?? orgs[0]?.id ?? null, teamId: null });
         setIsModalOpen(true);
+        preferencesCache = {
+          selection: { organizationId: null, teamId: null },
+          organizations: orgs,
+          teams: teamsForOrg,
+        };
       }
     } catch (err) {
       console.error(err);
@@ -243,11 +289,16 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
       setNewTeamName("");
       setError(null);
       updateLocalStorage(organizationId, teamId);
+      preferencesCache = {
+        selection: { organizationId, teamId },
+        organizations,
+        teams,
+      };
       window.dispatchEvent(new CustomEvent("user-preferences-updated", {
         detail: { organizationId, teamId },
       }));
     },
-    [updateLocalStorage],
+    [updateLocalStorage, organizations, teams],
   );
 
   const handleContinue = useCallback(async () => {
@@ -309,12 +360,18 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
         organizationId: team.organizationId ?? formOrgId,
       };
 
-      setTeams((prev) => sortTeams([...prev.filter((item) => item.id !== normalizedTeam.id), normalizedTeam]));
+      const updatedTeams = sortTeams([...teams.filter((item) => item.id !== normalizedTeam.id), normalizedTeam]);
+      setTeams(updatedTeams);
       setFormSelection({ organizationId: formOrgId, teamId: normalizedTeam.id });
       setAddingNew(false);
       setNewTeamName("");
 
       await persistSelection(formOrgId, normalizedTeam.id);
+      preferencesCache = {
+        selection: { organizationId: formOrgId, teamId: normalizedTeam.id },
+        organizations,
+        teams: updatedTeams,
+      };
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Failed to create team");
@@ -322,7 +379,7 @@ export default function TeamPreferencesProvider({ children }: ProviderProps) {
       setIsCreatingTeam(false);
       setIsSaving(false);
     }
-  }, [newTeamName, persistSelection, formOrgId]);
+  }, [newTeamName, organizations, persistSelection, formOrgId, teams]);
 
   const contextValue = useMemo<TeamPreferencesContextValue>(() => ({
     ready,

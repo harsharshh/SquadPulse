@@ -401,7 +401,11 @@ export async function getUserTeamStats(providerAccountId: string): Promise<TeamS
   return { averageMood, totalCheckins, lastCheckinAt } satisfies TeamStats;
 }
 
-export async function listTeamFeed(teamId: string, limit = 10) {
+export async function listTeamFeed(
+  teamId: string,
+  providerAccountId: string,
+  limit = 10,
+) {
   const sql = getDbClient();
   const query = createQuery(sql);
   await ensureSchema(sql);
@@ -418,6 +422,7 @@ export async function listTeamFeed(teamId: string, limit = 10) {
     FROM checkins c
     LEFT JOIN users u ON u.provider_account_id = c.provider_account_id
     WHERE c.team_id = ${teamId}
+      AND c.provider_account_id = ${providerAccountId}
     ORDER BY c.created_at DESC
     LIMIT ${limit}
   `;

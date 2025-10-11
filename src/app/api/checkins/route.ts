@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       getUserTeamStats(sessionInfo.userId),
     ]);
 
-    const teamFeed = resolvedTeamId ? await listTeamFeed(resolvedTeamId, 20) : [];
+    const teamFeed = resolvedTeamId ? await listTeamFeed(resolvedTeamId, sessionInfo.userId, 20) : [];
 
     return NextResponse.json({
       needsSelection,

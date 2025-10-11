@@ -176,6 +176,7 @@ function CheckInPageContent() {
   const [loadingComments, setLoadingComments] = useState<Record<string, boolean>>({});
   const [newHistoryComment, setNewHistoryComment] = useState<string>("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const lastFetchKeyRef = useRef<string | null>(null);
 
   const leftColRef = useRef<HTMLDivElement | null>(null);
   const rightColRef = useRef<HTMLDivElement | null>(null);
@@ -272,6 +273,7 @@ function CheckInPageContent() {
     const teamId = selection.teamId;
 
     if (!orgId || !teamId) {
+      lastFetchKeyRef.current = null;
       setOrganizations([]);
       setTeams([]);
       setMyHistory([]);
@@ -287,6 +289,12 @@ function CheckInPageContent() {
 
     setSelectedOrganizationId(orgId);
     setSelectedTeamId(teamId);
+
+    const fetchKey = `${orgId}|${teamId}`;
+    if (lastFetchKeyRef.current === fetchKey && initialized) {
+      return;
+    }
+    lastFetchKeyRef.current = fetchKey;
 
     let cancelled = false;
     setIsPageLoading(true);
@@ -331,7 +339,7 @@ function CheckInPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [teamPreferencesReady, selection.organizationId, selection.teamId, fetchDashboardData, openSelector]);
+  }, [teamPreferencesReady, selection.organizationId, selection.teamId, fetchDashboardData, openSelector, initialized]);
 
   useLayoutEffect(() => {
     const ctx = gsap.context(() => {
