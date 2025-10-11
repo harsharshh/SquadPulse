@@ -36,7 +36,7 @@ type WhisperCommentRow = {
 type ParticipantRow = {
   provider_account_id: string;
   anonymous_username: string | null;
-  last_activity: string;
+  last_seen: string;
 };
 
 export type WhisperComment = {
@@ -181,6 +181,21 @@ async function ensureSchema() {
       ON whisper_comments (whisper_id, created_at ASC)
   `;
 
+  await sql`
+    CREATE TABLE IF NOT EXISTS whisper_presence (
+      provider_account_id TEXT NOT NULL,
+      organization_id TEXT NOT NULL,
+      team_id TEXT,
+      last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (provider_account_id, organization_id)
+    )
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_whisper_presence_org_last_seen
+      ON whisper_presence (organization_id, last_seen DESC)
+  `;
+
   schemaState.initialized = true;
 }
 
@@ -202,6 +217,13 @@ export async function getWhisperWallData(params: WallQueryParams): Promise<Whisp
   const teamId = params.teamId ?? null;
   const categories = params.categories?.length ? params.categories.map(normalizeCategory) : [];
   const categoryFilter = categories.length ? sql`AND w.category = ANY(${categories}::text[])` : sql``;
+
+  await query`
+    INSERT INTO whisper_presence (provider_account_id, organization_id, team_id, last_seen)
+    VALUES (${params.providerAccountId}, ${organizationId}, ${teamId}, NOW())
+    ON CONFLICT (provider_account_id, organization_id)
+    DO UPDATE SET last_seen = NOW(), team_id = EXCLUDED.team_id
+  `;
 
   const posts = await query<WhisperRow[]>`
     SELECT
@@ -329,32 +351,32 @@ export async function getWhisperWallData(params: WallQueryParams): Promise<Whisp
     categoryCounts,
   };
 
-  const participantsRows = await query<ParticipantRow[]>`
-    WITH activity AS (
-      SELECT provider_account_id, created_at FROM whisper_posts WHERE (${organizationId}::text IS NULL OR organization_id = ${organizationId})
-      UNION ALL
-      SELECT wc.provider_account_id, wc.created_at
-      FROM whisper_comments wc
-      JOIN whisper_posts wp ON wp.id = wc.whisper_id
-      WHERE (${organizationId}::text IS NULL OR wp.organization_id = ${organizationId})
-    ),
-    ranked AS (
-      SELECT
-        provider_account_id,
-        MAX(created_at) AS last_activity
-      FROM activity
-      GROUP BY provider_account_id
-      ORDER BY MAX(created_at) DESC
-      LIMIT 32
-    )
-    SELECT
-      r.provider_account_id,
-      r.last_activity,
-      u.anonymous_username
-    FROM ranked r
-    LEFT JOIN users u ON u.provider_account_id = r.provider_account_id
-    ORDER BY r.last_activity DESC
-  `;
+  const participantsRows = teamId
+    ? await query<ParticipantRow[]>`
+        SELECT
+          p.provider_account_id,
+          p.last_seen,
+          u.anonymous_username
+        FROM whisper_presence p
+        LEFT JOIN users u ON u.provider_account_id = p.provider_account_id
+        WHERE p.organization_id = ${organizationId}
+          AND p.team_id = ${teamId}
+          AND p.last_seen >= NOW() - INTERVAL '5 minutes'
+        ORDER BY p.last_seen DESC
+        LIMIT 32
+      `
+    : await query<ParticipantRow[]>`
+        SELECT
+          p.provider_account_id,
+          p.last_seen,
+          u.anonymous_username
+        FROM whisper_presence p
+        LEFT JOIN users u ON u.provider_account_id = p.provider_account_id
+        WHERE p.organization_id = ${organizationId}
+          AND p.last_seen >= NOW() - INTERVAL '5 minutes'
+        ORDER BY p.last_seen DESC
+        LIMIT 32
+      `;
 
   const participants: WhisperParticipant[] = participantsRows.map((row) => ({
     id: row.provider_account_id,

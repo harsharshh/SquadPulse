@@ -157,6 +157,7 @@ export default function WhisperWallPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [initialLoad, setInitialLoad] = useState(true);
   const [deleteInProgress, setDeleteInProgress] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; postId: string | null }>({ open: false, postId: null });
 
   const fetchWhispersData = useCallback(async (options?: { organizationId?: string | null; teamId?: string | null }) => {
     const params = new URLSearchParams();
@@ -345,38 +346,96 @@ export default function WhisperWallPage() {
 
   const toggleLike = useCallback(
     async (postId: string) => {
+      let previousLiked = false;
+      let previousLikes = 0;
+      let optimisticLikes = 0;
+
+      setWhispers((prev) =>
+        prev.map((whisper) => {
+          if (whisper.id !== postId) return whisper;
+          previousLiked = Boolean(whisper.likedByMe);
+          previousLikes = whisper.likes;
+          optimisticLikes = Math.max(0, previousLikes + (previousLiked ? -1 : 1));
+          return { ...whisper, likedByMe: !previousLiked, likes: optimisticLikes };
+        }),
+      );
+
+      setActivePost((prev) =>
+        prev && prev.id === postId ? { ...prev, likedByMe: !previousLiked, likes: optimisticLikes } : prev,
+      );
+
+      setStats((prev) => ({
+        ...prev,
+        totalLikes: Math.max(0, prev.totalLikes + (previousLiked ? -1 : 1)),
+      }));
+
       try {
-        const existing = whispers.find((item) => item.id === postId);
         const response = await fetch(`/api/whispers/${postId}/like`, { method: "POST" });
         if (!response.ok) {
           throw new Error(await response.text());
         }
         const payload = (await response.json()) as { liked: boolean; likes: number };
-
         setWhispers((prev) =>
           prev.map((whisper) =>
             whisper.id === postId
               ? { ...whisper, likedByMe: payload.liked, likes: payload.likes }
-              : whisper
+              : whisper,
           )
         );
         setActivePost((prev) =>
-          prev && prev.id === postId ? { ...prev, likedByMe: payload.liked, likes: payload.likes } : prev
+          prev && prev.id === postId ? { ...prev, likedByMe: payload.liked, likes: payload.likes } : prev,
         );
         setStats((prev) => ({
           ...prev,
-          totalLikes: Math.max(0, prev.totalLikes + payload.likes - (existing?.likes ?? 0)),
+          totalLikes: Math.max(0, prev.totalLikes + payload.likes - optimisticLikes),
         }));
       } catch (err) {
         console.error(err);
         setError("Failed to update like. Please try again.");
+        // revert optimistic update on error
+        setWhispers((prev) =>
+          prev.map((whisper) =>
+            whisper.id === postId
+              ? { ...whisper, likedByMe: previousLiked, likes: previousLikes }
+              : whisper,
+          ),
+        );
+        setActivePost((prev) =>
+          prev && prev.id === postId ? { ...prev, likedByMe: previousLiked, likes: previousLikes } : prev,
+        );
+        setStats((prev) => ({
+          ...prev,
+          totalLikes: Math.max(0, prev.totalLikes + (previousLiked ? 1 : -1)),
+        }));
       }
     },
-    [whispers],
+  [],
   );
 
   const addComment = useCallback(
     async (postId: string, text: string) => {
+      const commentId = `optimistic-${Date.now()}`;
+      const optimisticComment = {
+        id: commentId,
+        author: "You",
+        text,
+        timestamp: new Date(),
+      } satisfies ReturnType<typeof mapApiComment>;
+
+      setWhispers((prev) =>
+        prev.map((whisper) =>
+          whisper.id === postId
+            ? { ...whisper, comments: [...whisper.comments, optimisticComment] }
+            : whisper,
+        )
+      );
+
+      setActivePost((prev) =>
+        prev && prev.id === postId ? { ...prev, comments: [...prev.comments, optimisticComment] } : prev,
+      );
+
+      setStats((prev) => ({ ...prev, totalComments: prev.totalComments + 1 }));
+
       try {
         const response = await fetch(`/api/whispers/${postId}/comments`, {
           method: "POST",
@@ -395,19 +454,49 @@ export default function WhisperWallPage() {
         setWhispers((prev) =>
           prev.map((whisper) =>
             whisper.id === postId
-              ? { ...whisper, comments: [...whisper.comments, comment] }
+              ? {
+                  ...whisper,
+                  comments: whisper.comments
+                    .filter((item) => item.id !== commentId)
+                    .concat(comment),
+                }
               : whisper
           )
         );
 
         setActivePost((prev) =>
-          prev && prev.id === postId ? { ...prev, comments: [...prev.comments, comment] } : prev
+          prev && prev.id === postId
+            ? {
+                ...prev,
+                comments: prev.comments
+                  .filter((item) => item.id !== commentId)
+                  .concat(comment),
+              }
+            : prev,
         );
-
-        setStats((prev) => ({ ...prev, totalComments: prev.totalComments + 1 }));
       } catch (err) {
         console.error(err);
         setError(err instanceof Error ? err.message : "Failed to add comment");
+        // revert optimistic comment
+        setWhispers((prev) =>
+          prev.map((whisper) =>
+            whisper.id === postId
+              ? {
+                  ...whisper,
+                  comments: whisper.comments.filter((item) => item.id !== commentId),
+                }
+              : whisper,
+          )
+        );
+        setActivePost((prev) =>
+          prev && prev.id === postId
+            ? {
+                ...prev,
+                comments: prev.comments.filter((item) => item.id !== commentId),
+              }
+            : prev,
+        );
+        setStats((prev) => ({ ...prev, totalComments: Math.max(0, prev.totalComments - 1) }));
       }
     },
     [],
@@ -542,15 +631,13 @@ export default function WhisperWallPage() {
     setEditingId(null);
   }, []);
 
-  const deletePost = useCallback(
-    async (id: string) => {
-      if (typeof window !== "undefined") {
-        const confirmed = window.confirm("Delete this whisper? This can’t be undone.");
-        if (!confirmed) {
-          return;
-        }
-      }
+  const deletePost = useCallback((id: string) => {
+    setDeleteConfirm({ open: true, postId: id });
+  }, []);
 
+  const confirmDelete = useCallback(
+    async (id: string) => {
+      setDeleteConfirm({ open: false, postId: null });
       setDeleteInProgress(id);
       try {
         const target = whispers.find((item) => item.id === id);
@@ -699,6 +786,33 @@ export default function WhisperWallPage() {
           onToggleLike={toggleLike}
         />
       </div>
+
+      {deleteConfirm.open && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-foreground/10 bg-gradient-to-br from-white/95 to-white/80 p-6 shadow-2xl dark:from-[#151527]/95 dark:to-[#1a1a2e]/80">
+            <h2 className="text-lg font-semibold text-foreground">Delete this whisper?</h2>
+            <p className="mt-2 text-sm text-foreground/70">
+              This action can&apos;t be undone. The post and its interactions will be permanently removed.
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                className="rounded-full px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-foreground/10"
+                onClick={() => setDeleteConfirm({ open: false, postId: null })}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-full bg-gradient-to-r from-[#ef4444] via-[#f97316] to-[#fb7185] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95"
+                onClick={() => deleteConfirm.postId && confirmDelete(deleteConfirm.postId)}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AuthGuard>
   );
 }
